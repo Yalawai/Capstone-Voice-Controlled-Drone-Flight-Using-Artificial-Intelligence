@@ -14,8 +14,8 @@ dependencies.
 First, clone the repository to your local machine.
 
 ``` bash
-git clone https://github.com/your-username/your-repository.git
-cd your-repository
+git clone https://github.com/Yalawai/Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence.git
+
 ```
 
 ------------------------------------------------------------------------
