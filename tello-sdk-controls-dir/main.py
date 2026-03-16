@@ -1,7 +1,6 @@
 from djitellopy import Tello
 import time
 import cv2
-from numpy.testing.print_coercion_tables import print_coercion_table
 
 tello = Tello()
 tello.connect()
