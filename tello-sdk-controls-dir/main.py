@@ -15,10 +15,14 @@ try:
     # Turns on camera
     tello.streamon()
     time.sleep(2)
-
+    frame = None
     # Extracts image from video stream
     frame_read = tello.get_frame_read()
-    frame = frame_read.frame
+    for x in range(50):
+        frame = frame_read.frame
+        if frame is not None and frame.size > 0:
+            break
+        time.sleep(0.1)
 
     # Save image to jpg
     cv2.imwrite("test.jpg", frame)
