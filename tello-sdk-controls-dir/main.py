@@ -20,8 +20,6 @@ try:
     frame_read = tello.get_frame_read()
     for x in range(50):
         frame = frame_read.frame
-        if frame is not None and frame.size > 0:
-            break
         time.sleep(0.1)
 
     # Save image to jpg
