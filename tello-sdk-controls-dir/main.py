@@ -18,7 +18,7 @@ try:
     frame = None
     # Extracts image from video stream
     frame_read = tello.get_frame_read()
-    for x in range(50):
+    for x in range(2):
         frame = frame_read.frame
         time.sleep(0.1)
 
