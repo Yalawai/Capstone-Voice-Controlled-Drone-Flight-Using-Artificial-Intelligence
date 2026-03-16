@@ -15,7 +15,7 @@ model = ChatGoogleGenerativeAI(model="gemini-3-flash-preview")
 
 SYSTEM_PROMPT = ""
 
-image_bytes = open("vision-action-controller-dir/flower.jpg", "rb").read()
+image_bytes = open("flower.jpg", "rb").read()
 image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 mime_type = "image/jpg"
 
@@ -34,4 +34,5 @@ message = HumanMessage(
 
 response = model.invoke([message])
 
-print(response)
+text = response.content[0]["text"].replace("\\n", "\n")
+print(text)
