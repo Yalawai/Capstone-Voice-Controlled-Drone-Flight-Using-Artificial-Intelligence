@@ -12,7 +12,7 @@ import tempfile
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 WHISPER_CLI_PATH = os.path.join(SCRIPT_DIR, "build", "bin", "Release", "whisper-cli.exe")
-MODEL_PATH       = os.path.join(SCRIPT_DIR,  "models", "ggml-base.en.bin")
+MODEL_PATH       = os.path.join(SCRIPT_DIR,  "models", "ggml-base.bin")
 AUDIO_FILE       = os.path.join(SCRIPT_DIR, "recording.wav")
 
 # =====================================================================
@@ -24,7 +24,7 @@ def record_audio():
     print("Hold **SPACE** to speak... (release SPACE to stop)")
 
     keyboard.wait('space')
-    print("🎙️  Recording... (release SPACE to stop)")
+    print("Recording... (release SPACE to stop)")
 
     frames = []
     start_time = time.time()
@@ -97,7 +97,7 @@ def save_and_transcribe(audio):
         return text if text else "(no speech detected)"
 
     except FileNotFoundError:
-        print("❌ Could not find whisper-cli.exe - check WHISPER_CLI_PATH")
+        print("Could not find whisper-cli.exe - check WHISPER_CLI_PATH")
         return "(whisper-cli not found)"
     except Exception as e:
         print(f"Error running whisper: {e}")
@@ -125,7 +125,7 @@ def main():
             audio = record_audio()
             text = save_and_transcribe(audio)
 
-            print("\n🧠 Transcription:")
+            print("\n Transcription:")
             print(text)
             print("-" * 70)
             print("Ready for next recording...\n")

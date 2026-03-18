@@ -663,9 +663,6 @@ OpenMP_C_FLAGS:STRING=-openmp
 //C compiler libraries for OpenMP parallelization
 OpenMP_C_LIB_NAMES:STRING=
 
-//The directory containing a CMake configuration file for SDL2.
-SDL2_DIR:PATH=SDL2_DIR-NOTFOUND
-
 //Name of the computer/site where compile is being run
 SITE:STRING=Kinlex
 
@@ -718,7 +715,7 @@ WHISPER_SANITIZE_THREAD:BOOL=OFF
 WHISPER_SANITIZE_UNDEFINED:BOOL=OFF
 
 //whisper: support for libSDL2
-WHISPER_SDL2:BOOL=ON
+WHISPER_SDL2:BOOL=OFF
 
 //whisper: use system-installed GGML library
 WHISPER_USE_SYSTEM_GGML:BOOL=OFF
@@ -902,7 +899,7 @@ CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_MT
 CMAKE_MT-ADVANCED:INTERNAL=1
 //number of local generators
-CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=7
+CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=13
 //Platform information initialized
 CMAKE_PLATFORM_INFO_INITIALIZED:INTERNAL=1
 //noop for ranlib

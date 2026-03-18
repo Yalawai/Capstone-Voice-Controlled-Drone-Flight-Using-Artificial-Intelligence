@@ -12,9 +12,13 @@
 /CMakeSettings.json
 /talk-llama.dSYM/
 
-
+build/
+build-*/
+build_*/
+tmp/
 
 # SPM
+.build/
 .swiftpm
 *.metallib
 
