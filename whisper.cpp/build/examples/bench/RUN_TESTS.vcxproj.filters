@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\kinle\OneDrive\Desktop\Capstone\Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence\whisper.cpp\build\CMakeFiles\e29ce7cdbe8344251612550b1d4862c4\RUN_TESTS_force.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{EE52D4C1-6968-30B2-BA3F-DD272376918D}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

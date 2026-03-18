@@ -1,0 +1,23 @@
+# CMake generation dependency list for this directory.
+C:/Program Files/CMake/share/cmake-4.3/Modules/BasicConfigVersion-SameMajorVersion.cmake.in
+C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeASMInformation.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/CMakePackageConfigHelpers.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/CheckCSourceCompiles.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/CheckIncludeFile.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/CheckIncludeFileCXX.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/CheckLibraryExists.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/Compiler/MSVC-ASM.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/FindPackageHandleStandardArgs.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/FindPackageMessage.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/FindThreads.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/GNUInstallDirs.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/Internal/CMakeASMLinkerInformation.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/Internal/CheckSourceCompiles.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/Platform/Linker/GNU.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/Platform/Linker/Windows-ASM.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/Platform/Linker/Windows-GNU-ASM.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/Platform/Linker/Windows-GNU.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/WriteBasicConfigVersionFile.cmake
+C:/Users/kinle/OneDrive/Desktop/Capstone/Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence/whisper.cpp/build/CMakeFiles/4.3.0-rc3/CMakeASMCompiler.cmake
+C:/Users/kinle/OneDrive/Desktop/Capstone/Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence/whisper.cpp/ggml/CMakeLists.txt
+C:/Users/kinle/OneDrive/Desktop/Capstone/Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence/whisper.cpp/ggml/cmake/ggml-config.cmake.in

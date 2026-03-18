@@ -1,0 +1,10 @@
+^C:\USERS\KINLE\ONEDRIVE\DESKTOP\CAPSTONE\CAPSTONE-VOICE-CONTROLLED-DRONE-FLIGHT-USING-ARTIFICIAL-INTELLIGENCE\WHISPER.CPP\EXAMPLES\SERVER\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/kinle/OneDrive/Desktop/Capstone/Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence/whisper.cpp -BC:/Users/kinle/OneDrive/Desktop/Capstone/Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence/whisper.cpp/build --check-stamp-file C:/Users/kinle/OneDrive/Desktop/Capstone/Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence/whisper.cpp/build/examples/server/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

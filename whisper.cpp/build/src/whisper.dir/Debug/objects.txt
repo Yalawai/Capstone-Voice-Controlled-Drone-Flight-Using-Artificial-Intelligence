@@ -1,0 +1,1 @@
+C:/Users/kinle/OneDrive/Desktop/Capstone/Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence/whisper.cpp/build/src/whisper.dir/Debug/whisper.obj
