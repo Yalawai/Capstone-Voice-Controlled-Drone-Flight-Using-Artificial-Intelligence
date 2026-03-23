@@ -44,7 +44,7 @@ def vision_agent(state: State) -> State:
     # state = tello.get_current_state()
     # img = tello.get_frame_read().frame
     
-    img = open(r"C:\Users\kinle\OneDrive\Desktop\Capstone\Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence\vision-action-controller-dir\test.png", "rb").read()
+    img = open(r"test.png", "rb").read()
     image_base64 = base64.b64encode(img).decode("utf-8")
     mime_type = "image/png"
     
@@ -137,9 +137,12 @@ def vision_agent(state: State) -> State:
     print("[VISION] Sending image to Gemini for analysis...")
     result = llm.invoke(prompt)
     print("[VISION] Gemini response received")
-    
     try:
-        perception_data = json.loads(result.content[0]["text"])
+        # Removes doc string and "json" text from output string.
+        vision_response = result.content[0]["text"].replace("'''",'')
+        vision_response = vision_response.replace("json",'')
+        # Converts string to JSON.
+        perception_data = json.loads(vision_response)
         print("[VISION] Parsed perception JSON successfully")
         print("[VISION] →", json.dumps(perception_data, indent=2))
     except Exception as e:
@@ -362,8 +365,8 @@ graph.add_node("executor", executor_node)
 graph.set_entry_point("vision_agent")
 
 graph.add_edge("vision_agent", "planner_agent")
-graph.add_edge("planner_agent", "executor")
-graph.add_edge("executor", "vision_agent")           # loop
+#graph.add_edge("planner_agent", "executor")
+#graph.add_edge("executor", "vision_agent")           # loop
 
 app = graph.compile()
 
