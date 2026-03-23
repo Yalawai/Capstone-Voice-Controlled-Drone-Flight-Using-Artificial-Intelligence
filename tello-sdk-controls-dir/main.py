@@ -7,14 +7,24 @@ class SDK:
     tello.connect()
 
     # Drone System Diagnostics
-    def DroneSystemInformation(self):
+    def DroneSystemInformation(self, infoType):
+        infoType = infoType.strip.lower()
         try:
-            print("Drone System Diagnostics")
-            print("Battery:", self.tello.get_battery())
-            print("Temperature:", self.tello.get_temperature())
-            print("flight Time:", self.tello.get_flight_time())
+            if infoType == "battery":
+                battery = self.tello.get_battery()
+                return battery
+            elif infoType == "temperature":
+                temperature = self.tello.get_temperature()
+                return temperature
+            elif infoType ==  "flghttime":
+                flightTime = self.tello.get_flight_time()
+                return flightTime
+            elif infoType == "height":
+                height = self.tello.get_distance_tof()
+                return height
         except Exception as e:
             print("Drone System Diagnostics Failed", e)
+
 
 
     #This take a picture and saves it
