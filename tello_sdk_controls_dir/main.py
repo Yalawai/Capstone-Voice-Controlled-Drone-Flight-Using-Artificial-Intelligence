@@ -56,7 +56,11 @@ class SDK:
     def DroneFlightController(self, command):
         try:
             command = re.sub(r'[^a-zA-Z0-9]', '', command).lower()
-            numbers = int("".join(c for c in command if c.isdigit()))
+            digits = "".join(c for c in command if c.isdigit())
+            if digits:
+                numbers = int(digits)
+            else:
+                numbers = 0
 
             if command == "takeoff":
                 self.tello.takeoff()
@@ -78,7 +82,6 @@ class SDK:
                 self.tello.turn_motor_off()
             else:
                 print("Unknown command")
-            return numbers
 
         except Exception as e:
             print("Drone Flight Control Failed:",e)
