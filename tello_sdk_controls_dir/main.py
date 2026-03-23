@@ -53,30 +53,32 @@ class SDK:
             self.tello.end()
 
 
-    def DroneFlightController(self, command, value=None):
+    def DroneFlightController(self, command):
         try:
             command = re.sub(r'[^a-zA-Z0-9]', '', command).lower()
+            numbers = int("".join(c for c in command if c.isdigit()))
 
             if command == "takeoff":
                 self.tello.takeoff()
             elif command == "land":
                 self.tello.land()
-            elif command == "up":
-                self.tello.move_up(value)
-            elif command == "down":
-                self.tello.move_down(value)
-            elif command == "left":
-                self.tello.move_left(value)
-            elif command == "right":
-                self.tello.move_right(value)
-            elif command == "rotateclockwise":
-                self.tello.rotate_clockwise(value)
-            elif command == "rotatecounterclockwise":
-                self.tello.rotate_counter_clockwise(value)
-            elif command == "motoroff":
+            elif command == "up" and numbers < 30:
+                self.tello.move_up(numbers)
+            elif command == "down" and numbers < 30:
+                self.tello.move_down(numbers)
+            elif command == "left" and numbers < 30:
+                self.tello.move_left(numbers)
+            elif command == "right" and numbers < 30:
+                self.tello.move_right(numbers)
+            elif command == "rotateclockwise" and numbers < 30:
+                self.tello.rotate_clockwise(numbers)
+            elif command == "rotatecounterclockwise" and numbers < 30:
+                self.tello.rotate_counter_clockwise(numbers)
+            elif command == "motoroff" :
                 self.tello.turn_motor_off()
             else:
                 print("Unknown command")
+            return numbers
 
         except Exception as e:
             print("Drone Flight Control Failed:",e)
