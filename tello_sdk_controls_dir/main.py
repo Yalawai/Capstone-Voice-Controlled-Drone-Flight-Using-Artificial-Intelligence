@@ -1,14 +1,18 @@
 from djitellopy import Tello
 import time
 import cv2
+import re
 
 class SDK:
-    tello = Tello()
-    tello.connect()
+    try:
+        tello = Tello()
+        tello.connect()
+    except:
+        print("drone Not connected")
 
     # Drone System Diagnostics
     def DroneSystemInformation(self, infoType):
-        infoType = infoType.strip.lower()
+        infoType = infoType.strip().lower()
         try:
             if infoType == "battery":
                 battery = self.tello.get_battery()
@@ -51,7 +55,7 @@ class SDK:
 
     def DroneFlightController(self, command, value=None):
         try:
-            command = command.strip.lower()
+            command = re.sub(r'[^a-zA-Z0-9]', '', command).lower()
 
             if command == "takeoff":
                 self.tello.takeoff()

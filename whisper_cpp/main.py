@@ -120,21 +120,20 @@ def main():
 
     print("Hold SPACE to record → Release to transcribe (Ctrl+C to quit)\n")
 
-    while True:
-        try:
-            audio = record_audio()
-            text = save_and_transcribe(audio)
+    try:
+        audio = record_audio()
+        text = save_and_transcribe(audio)
 
-            print("\n Transcription:")
-            print(text)
-            print("-" * 70)
-            print("Ready for next recording...\n")
+        print("\n Transcription:")
+        print(text)
+        print("-" * 70)
+        print("Ready for next recording...\n")
+        return text
 
-        except KeyboardInterrupt:
-            print("\n\nGoodbye!")
-            break
-        except Exception as e:
-            print(f"Unexpected error: {e}")
+    except KeyboardInterrupt:
+        print("\n\nGoodbye!")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
 
 
 if __name__ == "__main__":
