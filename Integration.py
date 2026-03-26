@@ -16,4 +16,9 @@ def emergency_land():
 threading.Thread(target=emergency_land, daemon=True).start()
 while True:
     voiceCommand = main()
-    sdk.DroneFlightController(voiceCommand)
+    digits = "".join(c for c in voiceCommand if c.isdigit())
+    if digits:
+        numbers = int(digits)
+    else:
+        numbers = 0
+    sdk.DroneFlightController(voiceCommand, numbers)

@@ -53,15 +53,10 @@ class SDK:
             self.tello.end()
 
 
-    def DroneFlightController(self, command):
+    def DroneFlightController(self, command, numbers = 0):
         try:
             command = re.sub(r'[^a-zA-Z0-9]', '', command).lower()
             noNumberCommand = re.sub(r'[^a-zA-Z]', '', command).lower()
-            digits = "".join(c for c in command if c.isdigit())
-            if digits:
-                numbers = int(digits)
-            else:
-                numbers = 0
 
             if noNumberCommand == "takeoff":
                 self.tello.takeoff()
