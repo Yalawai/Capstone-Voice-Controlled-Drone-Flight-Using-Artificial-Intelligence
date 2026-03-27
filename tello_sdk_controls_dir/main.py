@@ -62,17 +62,21 @@ class SDK:
                 self.tello.takeoff()
             elif noNumberCommand == "land":
                 self.tello.land()
-            elif noNumberCommand == "up" and numbers < 30:
+            elif noNumberCommand == "forward" and numbers < 100:
+                self.tello.move_forward(numbers)
+            elif noNumberCommand == "backward" and numbers < 100:
+                self.tello.move_back(numbers)
+            elif noNumberCommand == "up" and numbers < 100:
                 self.tello.move_up(numbers)
-            elif noNumberCommand == "down" and numbers < 30:
+            elif noNumberCommand == "down" and numbers < 100:
                 self.tello.move_down(numbers)
-            elif noNumberCommand == "left" and numbers < 30:
+            elif noNumberCommand == "left" and numbers < 100:
                 self.tello.move_left(numbers)
-            elif noNumberCommand == "right" and numbers < 30:
+            elif noNumberCommand == "right" and numbers < 100:
                 self.tello.move_right(numbers)
-            elif noNumberCommand == "rotateclockwise" and numbers < 30:
+            elif noNumberCommand == "rotateclockwise" and numbers < 100:
                 self.tello.rotate_clockwise(numbers)
-            elif noNumberCommand == "rotatecounterclockwise" and numbers < 30:
+            elif noNumberCommand == "rotatecounterclockwise" and numbers < 100:
                 self.tello.rotate_counter_clockwise(numbers)
             elif noNumberCommand == "motoroff" :
                 self.tello.turn_motor_off()

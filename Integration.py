@@ -13,6 +13,9 @@ def emergency_land():
 
     os._exit(0)
 
+def spin():
+    sdk.DroneFlightController("rotatecounterclockwise", 90)
+
 threading.Thread(target=emergency_land, daemon=True).start()
 while True:
     voiceCommand = main()
