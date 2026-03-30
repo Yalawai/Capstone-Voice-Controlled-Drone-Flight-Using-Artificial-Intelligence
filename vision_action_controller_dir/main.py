@@ -75,12 +75,26 @@ class State(TypedDict):
 
 def vision_agent(state: State) -> State:
     print("[VISION] Starting vision processing...")
+<<<<<<< HEAD
+=======
+    
+    # tello = state["tello"]
+    # state = tello.get_current_state()
+    # img = tello.get_frame_read().frame
+    
+    img = open(r"test.png", "rb").read()
+    image_base64 = base64.b64encode(img).decode("utf-8")
+    mime_type = "image/png"
+    
+    
+>>>>>>> 5d0ffc556cdf2aed82713c83e5b39292f4b9494e
 
     img = open(r"C:\Users\kinle\OneDrive\Desktop\Capstone\Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence\vision_action_controller_dir\test.png", "rb").read()
     image_base64 = base64.b64encode(img).decode("utf-8")
 
     prompt = [
         SystemMessage(content="""
+<<<<<<< HEAD
                       
                       You are the perception system of a drone.
 
@@ -149,6 +163,114 @@ Be precise and cautious.
         perception = vision_llm.invoke(prompt)
         print("[VISION] Structured output received")
         print(perception.model_dump())
+=======
+You are a drone perception system.
+
+You receive an image from a drone camera and must convert it into a structured environmental description.
+
+You are NOT a general assistant.
+You do NOT explain, speculate, or infer beyond what is visible.
+
+Your job is to extract only observable spatial information relevant to navigation.
+
+---
+
+INPUT:
+- A single image frame from a forward-facing drone camera.
+
+---
+
+OUTPUT FORMAT (STRICT JSON ONLY):
+
+{
+  "objects": [
+    {
+      "type": "object name",
+      "direction": "left | center | right",
+      "distance": "near | medium | far"
+    }
+  ],
+  "obstacles": [
+    {
+      "direction": "left | center | right",
+      "distance": "near | medium | far"
+    }
+  ],
+  "free_space": ["left", "center", "right"],
+  "environment": "indoor | outdoor | unknown",
+  "risk_level": "low | medium | high"
+}
+
+---
+
+CRITICAL OUTPUT RULES (ABSOLUTE):
+
+- Output MUST be valid JSON
+- Output MUST start with '{' and end with '}'
+- Output must be directly parsable by json.loads()
+- Do NOT include markdown formatting
+- Do NOT include backticks (```)
+- Do NOT include the word "json"
+- Do NOT include explanations or comments
+- Do NOT include any text before or after the JSON
+- Do NOT wrap the JSON in code blocks
+- Do NOT include trailing commas
+
+If you violate ANY of these rules, the system will fail.
+
+If unsure or no data is available, return:
+{}
+
+---
+
+PERCEPTION RULES:
+
+1. Only include objects that are clearly visible.
+2. Do NOT hallucinate or guess unseen objects.
+3. If unsure, omit the object.
+4. "direction" is based on horizontal position:
+   - left = left third of image
+   - center = middle third
+   - right = right third
+5. "distance" is estimated visually:
+   - near = very close / immediate collision risk
+   - medium = reachable in a few moves
+   - far = distant
+6. Obstacles include walls, furniture, people, or anything blocking movement.
+7. "free_space" should list directions that appear safe to move into.
+8. Keep output minimal and precise.
+
+---
+
+IMPORTANT:
+
+You are the drone’s vision system.
+Your output will directly control real-world movement.
+
+Incorrect or hallucinated data may cause a crash.
+
+Be conservative and precise.
+When in doubt, report less, not more.
+"""),
+        HumanMessage(
+            content=[
+                {
+                    "type": "image",
+                    "base64": image_base64,
+                    "mime_type": mime_type,
+                },
+            ]
+        )
+    ]
+    print("[VISION] Sending image to Gemini for analysis...")
+    result = llm.invoke(prompt)
+    print("[VISION] Gemini response received")
+    try:
+        # Converts string to JSON.
+        perception_data = json.loads(result.content[0]["text"])
+        print("[VISION] Parsed perception JSON successfully")
+        print("[VISION] →", json.dumps(perception_data, indent=2))
+>>>>>>> 5d0ffc556cdf2aed82713c83e5b39292f4b9494e
     except Exception as e:
         print("[VISION] Structured parsing failed:", e)
         perception = VisionOutput(
