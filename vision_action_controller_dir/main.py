@@ -77,9 +77,7 @@ def vision_agent(state: State) -> State:
     print("[VISION] Starting vision processing...")
     sdk.TakePicture()
     #gets the image from the drone --- to do
-    
-
-    img = open(r"../tello_sdk_controls_dir/test.jpg", "rb").read()
+    img = open(r"test.jpg", "rb").read()
     image_base64 = base64.b64encode(img).decode("utf-8")
 
     prompt = [
@@ -273,7 +271,8 @@ def executor_node(state: State):
     tello = state["drone_info"]
     action_dict = state["action"]
     action = action_dict.get('action', 'UNKNOWN')
-    value = action_dict.get('value')
+    value = action_dict.get("action")
+
     
     print(f"\n[EXECUTOR] ───── Step {len(state['history']) + 1} ─────")
     print(f"[EXECUTOR] Chosen action: {action}")
@@ -281,55 +280,9 @@ def executor_node(state: State):
         print(f"[EXECUTOR] Value: {value}")
     print(f"[EXECUTOR] Reason: {action_dict.get('reason', '—')}")
     print(f"[EXECUTOR] Confidence: {action_dict.get('confidence', '—')}")
-    
-    match action:
-        case "takeoff":
-            print("Executing: takeoff")
-            # tello.takeoff()
 
-        case "land":
-            print("Executing: land")
-            # tello.land()
+    sdk.DroneFlightController(value)
 
-        case "hover":
-            print("Executing: hover")
-            # tello.send_rc_control(0, 0, 0, 0)
-
-        case "move_forward":
-            print(f"Executing: move_forward {value}")
-            # tello.move_forward(int(value))
-
-        case "move_back":
-            print(f"Executing: move_back {value}")
-            # tello.move_back(int(value))
-
-        case "move_left":
-            print(f"Executing: move_left {value}")
-            # tello.move_left(int(value))
-
-        case "move_right":
-            print(f"Executing: move_right {value}")
-            # tello.move_right(int(value))
-
-        case "move_up":
-            print(f"Executing: move_up {value}")
-            # tello.move_up(int(value))
-
-        case "move_down":
-            print(f"Executing: move_down {value}")
-            # tello.move_down(int(value))
-
-        case "rotate_clockwise":
-            print(f"Executing: rotate_clockwise {value}")
-            # tello.rotate_clockwise(int(value))
-
-        case "rotate_counter_clockwise":
-            print(f"Executing: rotate_counter_clockwise {value}")
-            # tello.rotate_counter_clockwise(int(value))
-
-        case _:
-            print(f"Unknown command: {action!r}")
-    
     state["history"].append(action)
     print(f"[EXECUTOR] Action appended to history. New length: {len(state['history'])}")
     

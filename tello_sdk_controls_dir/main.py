@@ -31,7 +31,6 @@ class SDK:
             for x in range(5):
                 frame = frame_read.frame
                 time.sleep(0.1)
-
             # Save image to jpg
             sucesss = cv2.imwrite("test.jpg", frame)
             print("sucesss")
@@ -49,7 +48,6 @@ class SDK:
                 numbers = int(digits)
             else:
                 numbers = 0
-
             if command == "takeoff":
                 self.tello.takeoff()
             elif command == "land":
@@ -74,5 +72,7 @@ class SDK:
 
         except Exception as e:
             print("Drone Flight Control Failed:",e)
-#sdk = SDK()
-#sdk.TakePicture()
+sdk = SDK()
+print(sdk.DroneSystemInformation())
+sdk.DroneFlightController("takeoff")
+sdk.DroneFlightController("land")
