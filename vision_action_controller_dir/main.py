@@ -380,8 +380,8 @@ graph.add_node("executor", executor_node)
 graph.set_entry_point("vision_agent")
 
 graph.add_edge("vision_agent", "planner_agent")
-#graph.add_edge("planner_agent", "executor")
-#graph.add_edge("executor", "vision_agent")           # loop
+graph.add_edge("planner_agent", "executor")
+graph.add_edge("executor", "vision_agent")           # loop
 
 app = graph.compile()
 
