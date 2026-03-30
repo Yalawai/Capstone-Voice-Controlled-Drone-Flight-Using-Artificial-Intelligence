@@ -43,10 +43,11 @@ class SDK:
             for x in range(2):
                 frame = frame_read.frame
                 time.sleep(0.1)
-
+            
+            print(frame)
             # Save image to jpg
-            cv2.imwrite("test.jpg", frame)
-            print("Photo saved to jpg")
+            sucesss = cv2.imwrite("tello_sdk_controls_dir/test.jpg", frame)
+            print("sucesss")
         finally:
             # Turns off camera
             self.tello.streamoff()

@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, TypedDict, Annotated, List
+from typing import Any, Dict, TypedDict, Annotated, List, Optional, Literal
 from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage, ToolMessage, SystemMessage, HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -10,10 +10,11 @@ from langgraph.prebuilt import ToolNode
 import base64
 import json
 from djitellopy import Tello
+from pydantic import BaseModel, Field
+
 
 load_dotenv()
 
-llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview")
 
 ALLOWED_ACTIONS = {
     "takeoff",
@@ -29,6 +30,41 @@ ALLOWED_ACTIONS = {
     "rotate_counter_clockwise"
 }
 
+class ObjectItem(BaseModel):
+    type: str
+    direction: Literal["left", "center", "right"]
+    distance: Literal["near", "medium", "far"]
+
+class ObstacleItem(BaseModel):
+    direction: Literal["left", "center", "right"]
+    distance: Literal["near", "medium", "far"]
+
+class VisionOutput(BaseModel):
+    objects: List[ObjectItem]
+    obstacles: List[ObstacleItem]
+    free_space: List[Literal["left", "center", "right"]]
+    environment: Literal["indoor", "outdoor", "unknown"]
+    risk_level: Literal["low", "medium", "high"]
+    
+class ActionOutput(BaseModel):
+    action: Literal[
+        "takeoff", "land", "hover",
+        "move_forward", "move_back", "move_left", "move_right",
+        "move_up", "move_down",
+        "rotate_clockwise", "rotate_counter_clockwise"
+    ]
+    value: Optional[float]
+    reason: str
+    confidence: float
+    
+    
+
+
+base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
+
+vision_llm = base_llm.with_structured_output(VisionOutput)
+planner_llm = base_llm.with_structured_output(ActionOutput)
+
 class State(TypedDict):
     goal: str = ""
     telemetry: Dict[str, Any]
@@ -39,251 +75,196 @@ class State(TypedDict):
 
 def vision_agent(state: State) -> State:
     print("[VISION] Starting vision processing...")
-    
-    # tello = state["tello"]
-    # state = tello.get_current_state()
-    # img = tello.get_frame_read().frame
-    
-    img = open(r"C:\Users\kinle\OneDrive\Desktop\Capstone\Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence\vision-action-controller-dir\test.png", "rb").read()
-    image_base64 = base64.b64encode(img).decode("utf-8")
-    mime_type = "image/png"
-    
-    
 
-    print("[VISION] Image loaded and encoded (test.png)")
+    img = open(r"C:\Users\kinle\OneDrive\Desktop\Capstone\Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence\vision_action_controller_dir\test.png", "rb").read()
+    image_base64 = base64.b64encode(img).decode("utf-8")
 
     prompt = [
         SystemMessage(content="""
-                      You are a drone perception system.
+                      
+                      You are the perception system of a drone.
 
-                        You receive an image from a drone camera and must convert it into a structured environmental description.
+Your job is to convert a single camera image into a structured description of the environment.
 
-                        You are NOT a general assistant.
-                        You do NOT explain, speculate, or infer beyond what is visible.
+You must ONLY report what is clearly visible.
+Do NOT guess, infer, or hallucinate.
 
-                        Your job is to extract only observable spatial information relevant to navigation.
+---
 
-                        ---
+RULES:
 
-                        INPUT:
-                        - A single image frame from a forward-facing drone camera.
+- Only include objects that are clearly visible.
+- If unsure, omit the object.
+- Do NOT invent objects or obstacles.
+- Be conservative: reporting less is better than being wrong.
 
-                        ---
+---
 
-                        OUTPUT FORMAT (STRICT JSON ONLY):
+SPATIAL DEFINITIONS:
 
-                        {
-                        "objects": [
-                            {
-                            "type": "object name",
-                            "direction": "left | center | right",
-                            "distance": "near | medium | far"
-                            }
-                        ],
-                        "obstacles": [
-                            {
-                            "direction": "left | center | right",
-                            "distance": "near | medium | far"
-                            }
-                        ],
-                        "free_space": ["left", "center", "right"],
-                        "environment": "indoor | outdoor | unknown",
-                        "risk_level": "low | medium | high"
-                        }
+- direction:
+  - "left" = left third of image
+  - "center" = middle
+  - "right" = right third
 
-                        ---
+- distance:
+  - "near" = immediate collision risk
+  - "medium" = reachable in a few moves
+  - "far" = distant
 
-                        RULES:
+---
 
-                        1. Only include objects that are clearly visible.
-                        2. Do NOT hallucinate or guess unseen objects.
-                        3. If unsure, omit the object.
-                        4. "direction" is based on horizontal position:
-                        - left = left third of image
-                        - center = middle third
-                        - right = right third
-                        5. "distance" is estimated visually:
-                        - near = very close / immediate collision risk
-                        - medium = reachable in a few moves
-                        - far = distant
-                        6. Obstacles include walls, furniture, people, or anything blocking movement.
-                        7. "free_space" should list directions that appear safe to move into.
-                        8. Keep output minimal and precise.
-                        9. Do NOT include any text outside JSON.
-                        10. Do NOT include explanations.
+OUTPUT REQUIREMENTS:
 
-                        ---
+- Output MUST match the schema exactly.
+- No extra fields.
+- No explanations.
+- No text outside the structured output.
 
-                        IMPORTANT:
+---
 
-                        You are the drone’s vision.
-                        Your output will directly control real-world movement.
-                        Incorrect or hallucinated data may cause a crash.
+IMPORTANT:
 
-                        Be conservative and precise.
-                        When in doubt, report less, not more.
+Your output directly affects real-world movement.
+Incorrect data may cause a crash.
+
+Be precise and cautious.
+                      
+                      
+                      
+                      
                       """),
-        HumanMessage(
-            content=[
-                {
-                    "type": "image",
-                    "base64": image_base64,
-                    "mime_type": mime_type,
-                },
-            ]
-        )
+        HumanMessage(content=[
+            {
+                "type": "image",
+                "base64": image_base64,
+                "mime_type": "image/png",
+            }
+        ])
     ]
-    
-    print("[VISION] Sending image to Gemini for analysis...")
-    result = llm.invoke(prompt)
-    print("[VISION] Gemini response received")
+
+    print("[VISION] Sending to structured LLM...")
     
     try:
-        perception_data = json.loads(result.content[0]["text"])
-        print("[VISION] Parsed perception JSON successfully")
-        print("[VISION] →", json.dumps(perception_data, indent=2))
+        perception = vision_llm.invoke(prompt)
+        print("[VISION] Structured output received")
+        print(perception.model_dump())
     except Exception as e:
-        print("[VISION] Failed to parse perception JSON:", str(e))
-        print("[VISION] Raw response was:", result.content[0]["text"])
-        perception_data = {}
-    
+        print("[VISION] Structured parsing failed:", e)
+        perception = VisionOutput(
+            objects=[],
+            obstacles=[],
+            free_space=[],
+            environment="unknown",
+            risk_level="high"
+        )
+
     return {
         "tello": state["tello"],
         "telemetry": state["telemetry"],
-        "perception": perception_data
+        "perception": perception.model_dump()
     }
 
 def planner_agent(state: State) -> State:
     print("[PLANNER] Planning next action...")
-    print(f"[PLANNER] Current goal: {state['goal']}")
-    print(f"[PLANNER] History length: {len(state.get('history', []))}")
-    
+
     prompt = [
-        SystemMessage(content=
-                      """
+        SystemMessage(content=""" 
                       
-                      You are the decision-making brain of an autonomous drone.
+                      You are the control system of an autonomous drone.
 
-                        You are not a chatbot.
-                        You are not describing actions.
-                        You ARE the drone.
+You are NOT a chatbot.
+You ARE the drone.
 
-                        Your inputs represent your senses:
-                        - "perception" is your perception of the environment (vision + interpreted data)
-                        - "telemetry" is your body state (battery, altitude, orientation, velocity)
-                        - "history" is your memory of past actions
+- Perception = your vision
+- Telemetry = your body state
+- Actions = real-world movement
 
-                        You exist in a continuous control loop.
-                        At every step, you must decide the NEXT BEST ACTION.
+You operate in a continuous control loop.
+At each step, choose ONE safe and effective action.
 
-                        --------------------------------------------------
+---
 
-                        PRIMARY OBJECTIVE:
-                        Achieve the user's goal safely and efficiently.
+PRIMARY OBJECTIVE:
+Move toward the user’s goal safely.
 
-                        --------------------------------------------------
+---
 
-                        CORE BEHAVIOR RULES:
+CORE RULES:
 
-                        1. EMBODIED REASONING
-                        - Treat sensor data as real perception.
-                        - Treat telemetry as your physical condition.
-                        - You are acting in the real world, not simulating.
+1. SAFETY FIRST
+- Never move toward obstacles.
+- Avoid high-risk or unknown areas.
+- If uncertain → choose a safe action (hover or rotate).
 
-                        2. SHORT-HORIZON PLANNING
-                        - Only decide ONE next action at a time.
-                        - Do NOT generate long action sequences.
-                        - Prefer small, reversible movements.
+2. SHORT-TERM ACTIONS
+- Output ONLY one action.
+- Keep movements small (20–50 units).
+- Prefer reversible actions.
 
-                        3. SAFETY FIRST
-                        - Avoid obstacles at all times.
-                        - Never move into unknown or high-risk areas.
-                        - If risk is unclear → choose safer alternative or hover.
-                        - If battery is low → prioritize safe stopping or landing.
+3. CONSERVATIVE MOVEMENT
+- Do not move forward unless path is clear.
+- Use rotation to gather information if needed.
 
-                        4. UNCERTAINTY HANDLING
-                        - If perception is incomplete or ambiguous:
-                        → do NOT guess
-                        → choose a safe exploratory action (e.g., rotate, hover)
-                        - If confidence is low → reduce movement size.
+4. NO GUESSING
+- Use ONLY the provided perception data.
+- If data is unclear → act cautiously.
 
-                        5. CONSERVATIVE MOVEMENT
-                        - Prefer adjusting position before advancing.
-                        - Avoid large forward movements unless path is clear.
-                        - Use rotation to gather more information when needed.
+5. GOAL ALIGNMENT
+- Always move toward the goal.
+- If the goal is complex, handle it step-by-step internally.
 
-                        6. GOAL ALIGNMENT
-                        - Always move toward the user's objective.
-                        - If goal is complex, implicitly break it into steps internally,
-                        but ONLY output the next action.
+---
 
-                        --------------------------------------------------
+ACTION RULES:
 
-                        You are controlling a drone using a fixed command API.
+- Use ONLY allowed actions from the schema.
+- If action requires movement or rotation → include value.
+- If not → value must be null.
 
-                        You MUST choose ONE action from this list:
-                        - takeoff
-                        - land
-                        - hover
-                        - move_forward
-                        - move_back
-                        - move_left
-                        - move_right
-                        - move_up
-                        - move_down
-                        - rotate_clockwise
-                        - rotate_counter_clockwise
+---
 
-                        Rules:
-                        - If the action requires movement or rotation, provide a numeric value
-                        - If not (hover, takeoff, land), value must be null
-                        - Keep movements small and safe (20-50 cm or degrees)
-                        - Never output actions outside this list
+OUTPUT REQUIREMENTS:
 
-                        Output JSON:
-                        {
-                        "action": "...",
-                        "value": number or null,
-                        "reason": "...",
-                        "confidence": 0.0-1.0
-                        }
+- Must match the schema exactly.
+- No extra text.
+- No explanations outside fields.
 
-                        --------------------------------------------------
+---
 
-                        REMEMBER:
+IMPORTANT:
 
-                        You are a physical agent operating in a real environment.
-                        Every action has consequences.
-                        Be precise, cautious, and goal-directed.
+You are controlling a real drone.
+Every action has physical consequences.
+
+Be precise, cautious, and consistent.
                       
-                      """
                       
-                      ),
-        HumanMessage(content=f"""Here are the Inputs: \n
-                    perception: {json.dumps(state['perception'], indent=2)}, \n
-                    telemetry: {json.dumps(state['telemetry'], indent=2)} \n
-                    history: {state['history']}
-                    
-                    This is the user goal: {state['goal']}
-                    """)
+                      """),
+        HumanMessage(content=f""" Goal: {state['goal']} Perception: {json.dumps(state['perception'], indent=2)} Telemetry: {json.dumps(state['telemetry'], indent=2)} History:
+{state['history']}
+""")
     ]
-    
-    print("[PLANNER] Sending state to Gemini...")
-    result = llm.invoke(prompt)
-    print("[PLANNER] Decision received from LLM")
-    
+
+    print("[PLANNER] Sending to structured LLM...")
+
     try:
-        decision = json.loads(result.content[0]["text"])
-        print("[PLANNER] Parsed action JSON:")
-        print(json.dumps(decision, indent=2))
+        decision = planner_llm.invoke(prompt)
+        print("[PLANNER] Structured action:")
+        print(decision.model_dump())
     except Exception as e:
-        print("[PLANNER] Failed to parse planner JSON:", str(e))
-        print("[PLANNER] Raw LLM output:", result.content[0]["text"])
-        decision = {"action": "hover", "value": None, "reason": "parse error", "confidence": 0.0}
-    
+        print("[PLANNER] Failed, fallback to hover:", e)
+        decision = ActionOutput(
+            action="hover",
+            value=None,
+            reason="fallback due to parsing error",
+            confidence=0.0
+        )
+
     return {
-        "action": decision
+        "action": decision.model_dump()
     }
+    
 
 def executor_node(state: State):
     tello = state["tello"]
@@ -363,7 +344,7 @@ graph.set_entry_point("vision_agent")
 
 graph.add_edge("vision_agent", "planner_agent")
 graph.add_edge("planner_agent", "executor")
-graph.add_edge("executor", "vision_agent")           # loop
+graph.add_edge("executor", "vision_agent")           
 
 app = graph.compile()
 
@@ -374,7 +355,7 @@ state = {
     "telemetry": {},
     "perception": {},
     "action": {},
-    "history": [],               # ← fixed: should be list, not dict
+    "history": [],              
     "tello": tello
 }
 
