@@ -11,24 +11,12 @@ class SDK:
         print("drone Not connected")
 
     # Drone System Diagnostics
-    def DroneSystemInformation(self, infoType):
-        infoType = infoType.strip().lower()
+    def DroneSystemInformation(self):
         try:
-            if infoType == "battery":
-                battery = self.tello.get_battery()
-                return battery
-            elif infoType == "temperature":
-                temperature = self.tello.get_temperature()
-                return temperature
-            elif infoType ==  "flghttime":
-                flightTime = self.tello.get_flight_time()
-                return flightTime
-            elif infoType == "height":
-                height = self.tello.get_distance_tof()
-                return height
+            return self.tello.get_current_state()
         except Exception as e:
             print("Drone System Diagnostics Failed", e)
-
+            return None
 
 
     #This take a picture and saves it
@@ -40,18 +28,17 @@ class SDK:
             frame = None
             # Extracts image from video stream
             frame_read = self.tello.get_frame_read()
-            for x in range(2):
+            for x in range(5):
                 frame = frame_read.frame
                 time.sleep(0.1)
-            
-            print(frame)
+
             # Save image to jpg
-            sucesss = cv2.imwrite("tello_sdk_controls_dir/test.jpg", frame)
+            sucesss = cv2.imwrite("test.jpg", frame)
             print("sucesss")
         finally:
             # Turns off camera
             self.tello.streamoff()
-            self.tello.end()
+
 
 
     def DroneFlightController(self, command):
@@ -84,5 +71,8 @@ class SDK:
             else:
                 print("Unknown command")
 
+
         except Exception as e:
             print("Drone Flight Control Failed:",e)
+#sdk = SDK()
+#sdk.TakePicture()

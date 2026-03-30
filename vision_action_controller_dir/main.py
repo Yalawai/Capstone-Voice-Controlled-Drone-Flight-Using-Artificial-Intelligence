@@ -9,10 +9,8 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 import base64
 import json
-from djitellopy import Tello
 from pydantic import BaseModel, Field
-
-from tello_sdk_controls_dir import SDK
+from tello_sdk_controls_dir.main import SDK
 
 
 load_dotenv()
@@ -58,9 +56,8 @@ class ActionOutput(BaseModel):
     value: Optional[float]
     reason: str
     confidence: float
-    
-    
 
+sdk = SDK()
 
 base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
 
@@ -73,17 +70,16 @@ class State(TypedDict):
     perception: Dict[str, Any]
     action: Dict[str, Any]
     history: List[str]
-    tello: SDK
+    drone_info: Dict[str, Any]
+
 
 def vision_agent(state: State) -> State:
     print("[VISION] Starting vision processing...")
-    
-    tello = state["tello"]
+    sdk.TakePicture()
     #gets the image from the drone --- to do
     
-    
 
-    img = open(r"C:\Users\kinle\OneDrive\Desktop\Capstone\Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence\vision_action_controller_dir\test.png", "rb").read()
+    img = open(r"../tello_sdk_controls_dir/test.jpg", "rb").read()
     image_base64 = base64.b64encode(img).decode("utf-8")
 
     prompt = [
@@ -167,7 +163,7 @@ Be precise and cautious.
         )
 
     return {
-        "tello": state["tello"],
+        "drone_info": state["drone_info"],
         "telemetry": state["telemetry"],
         "perception": perception.model_dump()
     }
@@ -274,7 +270,7 @@ Be precise, cautious, and consistent.
     
 
 def executor_node(state: State):
-    tello = state["tello"]
+    tello = state["drone_info"]
     action_dict = state["action"]
     action = action_dict.get('action', 'UNKNOWN')
     value = action_dict.get('value')
@@ -354,16 +350,15 @@ graph.add_edge("planner_agent", "executor")
 graph.add_edge("executor", "vision_agent")           
 
 app = graph.compile()
-
-tello = SDK()
+Drone_info = sdk.DroneSystemInformation()
 
 state = {
     "goal": "take-off and land",
     "telemetry": {},
     "perception": {},
     "action": {},
-    "history": [],              
-    "tello": tello
+    "history": [],
+    "drone_info": {}
 }
 
 print("\n===== Starting drone control loop =====")
