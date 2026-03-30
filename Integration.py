@@ -1,12 +1,27 @@
+import os
 from tello_sdk_controls_dir.main import SDK
 from whisper_cpp.main import main
+import keyboard
+import threading
 
 sdk = SDK()
 
-voiceCommand = main()
-sdk.DroneFlightController(voiceCommand)
+def emergency_land():
+    keyboard.wait("a")
+    print("EMERGENCY LAND")
+    sdk.DroneFlightController("land")
 
-voiceCommand = main()
-sdk.DroneFlightController(voiceCommand)
+    os._exit(0)
 
-sdk.DroneFlightController("land")
+def spin():
+    sdk.DroneFlightController("rotatecounterclockwise", 90)
+
+threading.Thread(target=emergency_land, daemon=True).start()
+while True:
+    voiceCommand = main()
+    digits = "".join(c for c in voiceCommand if c.isdigit())
+    if digits:
+        numbers = int(digits)
+    else:
+        numbers = 0
+    sdk.DroneFlightController(voiceCommand, numbers)

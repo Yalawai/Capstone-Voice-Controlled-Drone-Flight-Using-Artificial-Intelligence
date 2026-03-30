@@ -54,32 +54,32 @@ class SDK:
             self.tello.end()
 
 
-    def DroneFlightController(self, command):
+    def DroneFlightController(self, command, numbers = 0):
         try:
             command = re.sub(r'[^a-zA-Z0-9]', '', command).lower()
-            digits = "".join(c for c in command if c.isdigit())
-            if digits:
-                numbers = int(digits)
-            else:
-                numbers = 0
+            noNumberCommand = re.sub(r'[^a-zA-Z]', '', command).lower()
 
-            if command == "takeoff":
+            if noNumberCommand == "takeoff":
                 self.tello.takeoff()
-            elif command == "land":
+            elif noNumberCommand == "land":
                 self.tello.land()
-            elif command == "up" and numbers < 30:
+            elif noNumberCommand == "forward" and numbers < 100:
+                self.tello.move_forward(numbers)
+            elif noNumberCommand == "backward" and numbers < 100:
+                self.tello.move_back(numbers)
+            elif noNumberCommand == "up" and numbers < 100:
                 self.tello.move_up(numbers)
-            elif command == "down" and numbers < 30:
+            elif noNumberCommand == "down" and numbers < 100:
                 self.tello.move_down(numbers)
-            elif command == "left" and numbers < 30:
+            elif noNumberCommand == "left" and numbers < 100:
                 self.tello.move_left(numbers)
-            elif command == "right" and numbers < 30:
+            elif noNumberCommand == "right" and numbers < 100:
                 self.tello.move_right(numbers)
-            elif command == "rotateclockwise" and numbers < 30:
+            elif noNumberCommand == "rotateclockwise" and numbers < 100:
                 self.tello.rotate_clockwise(numbers)
-            elif command == "rotatecounterclockwise" and numbers < 30:
+            elif noNumberCommand == "rotatecounterclockwise" and numbers < 100:
                 self.tello.rotate_counter_clockwise(numbers)
-            elif command == "motoroff" :
+            elif noNumberCommand == "motoroff" :
                 self.tello.turn_motor_off()
             else:
                 print("Unknown command")
