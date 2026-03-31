@@ -174,7 +174,7 @@ Be precise and cautious.
         )
 
     return {
-        "telemetry": state["telemetry"],
+        "telemetry": state.get("telemetry"),
         "perception": perception.model_dump()
     }
 
@@ -254,8 +254,8 @@ Be precise, cautious, and consistent.
                       
                       
                       """),
-        HumanMessage(content=f""" Goal: {state['goal']} Perception: {json.dumps(state['perception'], indent=2)} Telemetry: {json.dumps(state['telemetry'], indent=2)} History:
-{state['history']}
+        HumanMessage(content=f""" Goal: {state.get('goal')} Perception: {json.dumps(state.get('perception'), indent=2)} Telemetry: {json.dumps(state.get('telemetry'), indent=2)} History:
+{state.get('history')}
 """)
     ]
 
@@ -280,11 +280,11 @@ Be precise, cautious, and consistent.
     
 
 def executor_node(state: State):
-    action_dict = state["action"]
+    action_dict = state.get("action")
     action = action_dict.get('action', 'UNKNOWN')
     value = action_dict.get('value', None)
 
-    print(f"\n[EXECUTOR] ───── Step {len(state['history']) + 1} ─────")
+    print(f"\n[EXECUTOR] ───── Step {len(state.get('history')) + 1} ─────")
     print(f"[EXECUTOR] Chosen action: {action}")
     if value is not None:
         print(f"[EXECUTOR] Value: {value}")
@@ -293,8 +293,8 @@ def executor_node(state: State):
 
     sdk.DroneFlightController(action_dict)
 
-    state["history"].append(action)
-    print(f"[EXECUTOR] Action appended to history. New length: {len(state['history'])}")
+    state.get("history").append(action)
+    print(f"[EXECUTOR] Action appended to history. New length: {len(state.get('history'))}")
     
     return state
 
@@ -325,10 +325,10 @@ state = {
 }
 
 print("\n===== Starting drone control loop =====")
-print("Goal:", state["goal"])
-print("Initial history:", state["history"])
+print("Goal:", state.get("goal"))
+print("Initial history:", state.get("history"))
 
 state = app.invoke(state)
 
 print("\n===== Loop finished =====")
-print("Final history:", state["history"])
+print("Final history:", state.get("history"))
