@@ -74,10 +74,10 @@ class SDK:
                 self.tello.rotate_counter_clockwise(numbers)
             elif action == "motoroff":
                 self.tello.turn_motor_off()
-            elif action == "UNKNOWN":
-                print("Unknown command")
             else:
-                print("Error")
+                print(action)
+        except Exception as e:
+            print("Drone Flight Controller Failed", e)
 
     def ShutDown(self):
         try:
@@ -86,9 +86,6 @@ class SDK:
         except Exception as e:
             print("Shutdown Failed", e)
 
-
-        except Exception as e:
-            print("Drone Flight Control Failed:",e)
 sdk = SDK()
 print(sdk.DroneSystemInformation())
 sdk.TakePicture()
