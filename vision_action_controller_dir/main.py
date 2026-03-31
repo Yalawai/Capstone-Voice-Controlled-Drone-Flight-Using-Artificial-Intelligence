@@ -162,7 +162,7 @@ Be precise and cautious.
 
     return {
         "drone_info": state["drone_info"],
-        "telemetry": state["telemetry"],
+            "telemetry": state["telemetry"],
         "perception": perception.model_dump()
     }
 

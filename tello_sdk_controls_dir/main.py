@@ -50,8 +50,10 @@ class SDK:
                 numbers = 0
             if command == "takeoff":
                 self.tello.takeoff()
+                print("takeoff")
             elif command == "land":
                 self.tello.land()
+                print("land")
             elif command == "up" and numbers < 30:
                 self.tello.move_up(numbers)
             elif command == "down" and numbers < 30:
@@ -72,7 +74,7 @@ class SDK:
 
         except Exception as e:
             print("Drone Flight Control Failed:",e)
-sdk = SDK()
-print(sdk.DroneSystemInformation())
-sdk.DroneFlightController("takeoff")
-sdk.DroneFlightController("land")
+#sdk = SDK()
+#print(sdk.DroneSystemInformation())
+#sdk.DroneFlightController("takeoff")
+#sdk.DroneFlightController("land")
