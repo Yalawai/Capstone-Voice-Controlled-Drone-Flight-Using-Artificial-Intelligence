@@ -46,7 +46,9 @@ class SDK:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             # Encode once here
             _, buffer = cv2.imencode('.jpg', frame_rgb)
+            print("Turn into jpg")
             image_b64 = base64.b64encode(buffer).decode('utf-8')
+            print("decoded to b64")
             print("Picture Captured")
             return image_b64
         except Exception as e:
