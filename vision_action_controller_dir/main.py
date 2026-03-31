@@ -271,9 +271,8 @@ def executor_node(state: State):
     tello = state["drone_info"]
     action_dict = state["action"]
     action = action_dict.get('action', 'UNKNOWN')
-    value = action_dict.get("action")
+    value = action_dict.get('value', None)
 
-    
     print(f"\n[EXECUTOR] ───── Step {len(state['history']) + 1} ─────")
     print(f"[EXECUTOR] Chosen action: {action}")
     if value is not None:
@@ -281,7 +280,7 @@ def executor_node(state: State):
     print(f"[EXECUTOR] Reason: {action_dict.get('reason', '—')}")
     print(f"[EXECUTOR] Confidence: {action_dict.get('confidence', '—')}")
 
-    sdk.DroneFlightController(value)
+    sdk.DroneFlightController(action_dict)
 
     state["history"].append(action)
     print(f"[EXECUTOR] Action appended to history. New length: {len(state['history'])}")

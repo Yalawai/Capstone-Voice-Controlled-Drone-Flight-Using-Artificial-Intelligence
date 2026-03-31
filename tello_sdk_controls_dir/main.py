@@ -40,36 +40,35 @@ class SDK:
 
 
 
-    def DroneFlightController(self, command):
+    def DroneFlightController(self, action_dict):
         try:
-            command = re.sub(r'[^a-zA-Z0-9]', '', command).lower()
-            digits = "".join(c for c in command if c.isdigit())
-            if digits:
-                numbers = int(digits)
-            else:
-                numbers = 0
-            if command == "takeoff":
+            action = action_dict.get('action','UNKNOWN')
+            numbers = action_dict.get('value',None)
+
+            if action == "takeoff":
                 self.tello.takeoff()
                 print("takeoff")
-            elif command == "land":
+            elif action == "land":
                 self.tello.land()
                 print("land")
-            elif command == "up" and numbers < 30:
+            elif action == "up" and numbers < 30:
                 self.tello.move_up(numbers)
-            elif command == "down" and numbers < 30:
+            elif action == "down" and numbers < 30:
                 self.tello.move_down(numbers)
-            elif command == "left" and numbers < 30:
+            elif action == "left" and numbers < 30:
                 self.tello.move_left(numbers)
-            elif command == "right" and numbers < 30:
+            elif action == "right" and numbers < 30:
                 self.tello.move_right(numbers)
-            elif command == "rotateclockwise" and numbers < 30:
+            elif action == "rotateclockwise" and numbers < 30:
                 self.tello.rotate_clockwise(numbers)
-            elif command == "rotatecounterclockwise" and numbers < 30:
+            elif action == "rotatecounterclockwise" and numbers < 30:
                 self.tello.rotate_counter_clockwise(numbers)
-            elif command == "motoroff" :
+            elif action == "motoroff" :
                 self.tello.turn_motor_off()
-            else:
+            elif action == "UNKNOWN" :
                 print("Unknown command")
+            else:
+                print("Error")
 
 
         except Exception as e:
