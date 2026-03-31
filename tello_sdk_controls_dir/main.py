@@ -4,11 +4,17 @@ import cv2
 import re
 
 class SDK:
-    try:
-        tello = Tello()
-        tello.connect()
-    except:
-        print("drone Not connected")
+    def __init__(self):
+        try:
+            self.tello = Tello()
+            self.tello.connect()
+            self.tello.streamon()
+            self.frame_read = self.tello.get_frame_read()
+            time.sleep(2)
+            print("Drone Connected")
+
+        except:
+            print("drone Not connected")
 
     # Drone System Diagnostics
     def DroneSystemInformation(self):
@@ -22,21 +28,12 @@ class SDK:
     #This take a picture and saves it
     def TakePicture(self):
         try:
-            # Turns on camera
-            self.tello.streamon()
-            time.sleep(2)
-            frame = None
-            # Extracts image from video stream
-            frame_read = self.tello.get_frame_read()
-            for x in range(5):
-                frame = frame_read.frame
-                time.sleep(0.1)
+            frame = self.frame_read.frame
             # Save image to jpg
             sucesss = cv2.imwrite("test.jpg", frame)
             print("sucesss")
-        finally:
-            # Turns off camera
-            self.tello.streamoff()
+        except Exception as e:
+            print("Camera Failed ", e)
 
 
 
@@ -73,7 +70,6 @@ class SDK:
 
         except Exception as e:
             print("Drone Flight Control Failed:",e)
-#sdk = SDK()
-#print(sdk.DroneSystemInformation())
-#sdk.DroneFlightController("takeoff")
-#sdk.DroneFlightController("land")
+sdk = SDK()
+print(sdk.DroneSystemInformation())
+sdk.TakePicture()
