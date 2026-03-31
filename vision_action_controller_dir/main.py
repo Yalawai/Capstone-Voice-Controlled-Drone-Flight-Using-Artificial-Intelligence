@@ -88,10 +88,8 @@ class State(TypedDict):
 
 def vision_agent(state: State) -> State:
     print("[VISION] Starting vision processing...")
-    sdk.TakePicture()
     #gets the image from the drone --- to do
-    img = open(r"test.jpg", "rb").read()
-    image_base64 = base64.b64encode(img).decode("utf-8")
+    image_base64 = sdk.TakePicture()
 
     prompt = [
         SystemMessage(content="""

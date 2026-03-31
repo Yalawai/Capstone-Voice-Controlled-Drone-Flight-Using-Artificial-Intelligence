@@ -2,6 +2,7 @@ from djitellopy import Tello
 import time
 import cv2
 import re
+import base64
 
 from sentry_sdk.utils import single_exception_from_error_tuple
 
@@ -41,11 +42,16 @@ class SDK:
     def TakePicture(self):
         try:
             frame = self.frame_read.frame
-            # Save image to jpg
-            sucesss = cv2.imwrite("test.jpg", frame)
-            print("sucesss")
+            # Convert BGR → RGB (optional but better for vision models)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # Encode once here
+            _, buffer = cv2.imencode('.jpg', frame_rgb)
+            image_b64 = base64.b64encode(buffer).decode('utf-8')
+            print("Picture Captured")
+            return image_b64
         except Exception as e:
             print("Camera Failed ", e)
+            return None
 
 
 
