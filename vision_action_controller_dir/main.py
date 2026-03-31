@@ -58,6 +58,7 @@ class ActionOutput(BaseModel):
     confidence: float
 
 sdk = SDK()
+telemetry = sdk.DroneSystemInformation()
 
 base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
 
@@ -70,7 +71,6 @@ class State(TypedDict):
     perception: Dict[str, Any]
     action: Dict[str, Any]
     history: List[str]
-    drone_info: Dict[str, Any]
 
 
 def vision_agent(state: State) -> State:
@@ -161,8 +161,7 @@ Be precise and cautious.
         )
 
     return {
-        "drone_info": state["drone_info"],
-            "telemetry": state["telemetry"],
+        "telemetry": state["telemetry"],
         "perception": perception.model_dump()
     }
 
@@ -268,7 +267,6 @@ Be precise, cautious, and consistent.
     
 
 def executor_node(state: State):
-    tello = state["drone_info"]
     action_dict = state["action"]
     action = action_dict.get('action', 'UNKNOWN')
     value = action_dict.get('value', None)
@@ -309,8 +307,7 @@ state = {
     "telemetry": {},
     "perception": {},
     "action": {},
-    "history": [],
-    "drone_info": {}
+    "history": []
 }
 
 print("\n===== Starting drone control loop =====")
