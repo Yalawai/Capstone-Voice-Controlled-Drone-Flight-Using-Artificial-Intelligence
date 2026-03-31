@@ -11,6 +11,8 @@ import base64
 import json
 from pydantic import BaseModel, Field
 from tello_sdk_controls_dir.main import SDK
+import threading
+import keyboard
 
 
 load_dotenv()
@@ -57,7 +59,18 @@ class ActionOutput(BaseModel):
     reason: str
     confidence: float
 
+# SDK Object
 sdk = SDK()
+
+# Kill switch code
+def kill_listener():
+    print("Press 'k' to EMERGENCY KILL")
+    keyboard.wait("k")
+    print("[SAFETY] KILL SWITCH TRIGGERED")
+    sdk.emergency_kill()
+# Thread to allow kill command to run anytime
+threading.Thread(target=kill_listener, daemon=True).start()
+
 telemetry = sdk.DroneSystemInformation()
 
 base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
@@ -286,6 +299,7 @@ def executor_node(state: State):
     return state
 
 # ────────────────────────────────────────────────
+
 
 graph = StateGraph(State)
 

@@ -3,6 +3,9 @@ import time
 import cv2
 import re
 
+from sentry_sdk.utils import single_exception_from_error_tuple
+
+
 class SDK:
     def __init__(self):
         try:
@@ -15,6 +18,15 @@ class SDK:
 
         except:
             print("drone Not connected")
+
+
+
+    def emergency_kill(self):
+        try:
+            print("Emergency Kill")
+            self.tello.emergency()
+        except Exception as e:
+            print("Emergency Kill Failed", e)
 
     # Drone System Diagnostics
     def DroneSystemInformation(self):
@@ -48,24 +60,31 @@ class SDK:
             elif action == "land":
                 self.tello.land()
                 print("land")
-            elif action == "up" and numbers < 30:
+            elif action == "up":
                 self.tello.move_up(numbers)
-            elif action == "down" and numbers < 30:
+            elif action == "down":
                 self.tello.move_down(numbers)
-            elif action == "left" and numbers < 30:
+            elif action == "left":
                 self.tello.move_left(numbers)
-            elif action == "right" and numbers < 30:
+            elif action == "right":
                 self.tello.move_right(numbers)
-            elif action == "rotateclockwise" and numbers < 30:
+            elif action == "rotateclockwise":
                 self.tello.rotate_clockwise(numbers)
-            elif action == "rotatecounterclockwise" and numbers < 30:
+            elif action == "rotatecounterclockwise":
                 self.tello.rotate_counter_clockwise(numbers)
-            elif action == "motoroff" :
+            elif action == "motoroff":
                 self.tello.turn_motor_off()
-            elif action == "UNKNOWN" :
+            elif action == "UNKNOWN":
                 print("Unknown command")
             else:
                 print("Error")
+
+    def ShutDown(self):
+        try:
+            self.tello.streamoff()
+            self.tello.end()
+        except Exception as e:
+            print("Shutdown Failed", e)
 
 
         except Exception as e:
