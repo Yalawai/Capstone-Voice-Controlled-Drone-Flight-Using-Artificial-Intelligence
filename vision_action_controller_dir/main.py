@@ -1,7 +1,7 @@
 import time
 from typing import Any, Dict, TypedDict, Annotated, List, Optional, Literal
 from dotenv import load_dotenv
-from langchain_core.messages import BaseMessage, ToolMessage, SystemMessage, HumanMessage
+from langchain_core.messages import BaseMessage, ToolMessage, SystemMessage, HumanMessage, AIMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.tools import tool
 from langgraph.graph.message import add_messages
@@ -10,27 +10,15 @@ from langgraph.prebuilt import ToolNode
 import base64
 import json
 from pydantic import BaseModel, Field
-from tello_sdk_controls_dir.main import SDK
+
 import threading
 import keyboard
 
+from IPython.display import Image, display
+from tello_sdk_controls_dir.main import SDK
 
 load_dotenv()
 
-
-ALLOWED_ACTIONS = {
-    "takeoff",
-    "land",
-    "hover",
-    "move_forward",
-    "move_back",
-    "move_left",
-    "move_right",
-    "move_up",
-    "move_down",
-    "rotate_clockwise",
-    "rotate_counter_clockwise"
-}
 
 class ObjectItem(BaseModel):
     type: str
@@ -58,6 +46,20 @@ class ActionOutput(BaseModel):
     value: Optional[float]
     reason: str
     confidence: float
+    
+class UserIntent(BaseModel):
+    intent: Literal["chat", "set_goal", "stop_drone", "get_status"]
+    new_goal: Optional[str] = None
+    response_to_user: str
+    confidence: float = Field(..., ge=0.0, le=1.0)
+
+class GoalCheckOutput(BaseModel):
+    status: Literal["continue", "completed", "abort", "pause"]
+    reason: str
+    message_to_user: Optional[str] = None
+    suggested_new_goal: Optional[str] = None
+    
+
 
 # SDK Object
 sdk = SDK()
@@ -71,20 +73,78 @@ def kill_listener():
 # Thread to allow kill command to run anytime
 threading.Thread(target=kill_listener, daemon=True).start()
 
-telemetry = sdk.DroneSystemInformation()
 
 base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
 
 vision_llm = base_llm.with_structured_output(VisionOutput)
 planner_llm = base_llm.with_structured_output(ActionOutput)
+router_llm = base_llm.with_structured_output(UserIntent)
+checker_llm = base_llm.with_structured_output(GoalCheckOutput)
 
 class State(TypedDict):
-    goal: str = ""
+    
+    messages: Annotated[List[BaseMessage], add_messages]
+    goal: Optional[str]
+    drone_active: bool
     telemetry: Dict[str, Any]
     perception: Dict[str, Any]
     action: Dict[str, Any]
     history: List[str]
 
+
+
+
+def router_agent(state: State) -> State:
+    """Handles user messages: normal chat or detect drone commands and set goal."""
+    print("[ROUTER] Processing user input...")
+
+    # last_message = state["messages"][-1].content if state["messages"] else ""
+
+    prompt = [
+        SystemMessage(content="""
+You are a helpful drone assistant that can chat naturally or control a real Tello drone.
+
+Your job:
+- If the user is just chatting → respond friendly and set intent="chat"
+- If the user asks the drone to do something (takeoff, land, move, hover, fly to somewhere, check something, etc.) 
+  → set intent="set_goal", extract a clear short goal, and respond with confirmation.
+- If user says "stop", "land now", "abort", "emergency" → intent="stop_drone"
+- If user asks for status → intent="get_status"
+
+Be concise, friendly, and safe. Never promise impossible actions.
+        """),
+        *state["messages"]  # pass full conversation history
+    ]
+
+    try:
+        decision: UserIntent = router_llm.invoke(prompt)
+        print(f"[ROUTER] Intent: {decision.intent} | Goal: {decision.new_goal}")
+    except Exception as e:
+        print("[ROUTER] LLM failed, fallback to chat:", e)
+        decision = UserIntent(
+            intent="chat",
+            new_goal=None,
+            response_to_user="Sorry, I didn't understand. Could you rephrase?",
+            confidence=0.0
+        )
+
+    updates = {
+        "messages": [AIMessage(content=decision.response_to_user)]
+    }
+
+    if decision.intent == "set_goal" and decision.new_goal:
+        updates["goal"] = decision.new_goal
+        updates["drone_active"] = True
+        updates["history"] = []  # reset drone history for new goal
+    elif decision.intent == "stop_drone":
+        updates["goal"] = None
+        updates["drone_active"] = False
+        updates["messages"].append(AIMessage(content="Drone command stopped. Returning to chat mode."))
+    elif decision.intent == "get_status":
+        status_msg = f"Current goal: {state.get('goal') or 'None'}. Drone active: {state.get('drone_active', False)}"
+        updates["messages"].append(AIMessage(content=status_msg))
+
+    return updates
 
 def vision_agent(state: State) -> State:
     print("[VISION] Starting vision processing...")
@@ -150,7 +210,7 @@ Be precise and cautious.
             {
                 "type": "image",
                 "base64": image_base64,
-                "mime_type": "image/png",
+                "mime_type": "image/jpg",
             }
         ])
     ]
@@ -172,7 +232,7 @@ Be precise and cautious.
         )
 
     return {
-        "telemetry": state.get("telemetry"),
+        "telemetry": sdk.DroneSystemInformation(),
         "perception": perception.model_dump()
     }
 
@@ -296,26 +356,136 @@ def executor_node(state: State):
     
     return state
 
+
+
+def goal_checker(state: State) -> State:
+    """Checks if the current goal is completed, should continue, or needs to abort."""
+    print("[CHECKER] Evaluating goal progress...")
+
+    if not state.get("drone_active") or not state.get("goal"):
+        return {"drone_active": False}
+
+    prompt = [
+        SystemMessage(content="""
+You are the goal supervisor for an autonomous drone.
+Analyze the current goal, recent perception, telemetry, action history, and risk level.
+
+Decide:
+- "continue"  → keep flying toward the goal
+- "completed" → goal achieved, stop autonomous mode
+- "abort"     → safety issue, low battery, stuck, or user wants to stop
+- "pause"     → temporary pause (e.g. unclear environment)
+
+Be very conservative on safety. If risk_level is "high", prefer abort or pause.
+        """),
+        HumanMessage(content=f"""
+Current Goal: {state.get('goal')}
+Drone Active: {state.get('drone_active')}
+Latest Perception: {json.dumps(state.get('perception'), indent=2)}
+Telemetry: {json.dumps(state.get('telemetry'), indent=2)}
+Action History (last 10): {state.get('history', [])[-10:]}
+        """)
+    ]
+
+    try:
+        check = checker_llm.invoke(prompt)
+        print(f"[CHECKER] Status: {check.status} | Reason: {check.reason}")
+    except Exception as e:
+        print("[CHECKER] Failed, default continue:", e)
+        check = GoalCheckOutput(status="continue", reason="parsing fallback", message_to_user=None)
+
+    updates: Dict[str, Any] = {
+        "messages": []
+    }
+
+    if check.message_to_user:
+        updates["messages"].append(AIMessage(content=check.message_to_user))
+
+    if check.status in ["completed", "abort"]:
+        updates["drone_active"] = False
+        updates["goal"] = None
+        if check.status == "completed":
+            updates["messages"].append(AIMessage(content=f"Goal completed: {state.get('goal')}"))
+        else:
+            updates["messages"].append(AIMessage(content=f"Autonomous flight aborted: {check.reason}"))
+    elif check.status == "pause":
+        updates["drone_active"] = False  # pause until user resumes
+
+    if check.suggested_new_goal:
+        updates["goal"] = check.suggested_new_goal
+
+    return updates
+
+
+
+def route_after_router(state: State):
+    """Decide what happens after router processes user input."""
+    if state.get("drone_active") and state.get("goal"):
+        return "vision_agent"      # start/continue drone loop
+    else:
+        return "end"                 # stay in chat mode
+
+def route_after_checker(state: State):
+    """After checker runs, decide next step."""
+    status = state.get("drone_active", False)
+    if status:
+        return "vision_agent"      # continue the autonomous loop
+    else:
+        return "end"     # go back to conversation mode
+
 # ────────────────────────────────────────────────
 
 
 graph = StateGraph(State)
 
+# Add all nodes
+graph.add_node("router_agent", router_agent)
 graph.add_node("vision_agent", vision_agent)
 graph.add_node("planner_agent", planner_agent)
 graph.add_node("executor", executor_node)
+graph.add_node("goal_checker", goal_checker)
 
-graph.set_entry_point("vision_agent")
+# Entry point is always the router (listens to user)
+graph.set_entry_point("router_agent")
 
+# Router decides whether to go to drone loop or end
+graph.add_conditional_edges(
+    "router_agent",
+    route_after_router,
+    {
+        "vision_agent": "vision_agent",
+        "end": END
+    }
+)
+
+# Drone control loop
 graph.add_edge("vision_agent", "planner_agent")
 graph.add_edge("planner_agent", "executor")
-graph.add_edge("executor", "vision_agent")           
+graph.add_edge("executor", "goal_checker")
+
+# Checker decides whether to loop back or return to conversation
+graph.add_conditional_edges(
+    "goal_checker",
+    route_after_checker,
+    {
+        "vision_agent": "vision_agent",
+        "end": END
+    }
+)
 
 app = graph.compile()
-Drone_info = sdk.DroneSystemInformation()
 
+
+#ai agent logic flow chart generator
+# img_bytes = app.get_graph().draw_mermaid_png()
+
+# with open("graph.png", "wb") as f:
+#     f.write(img_bytes)
+    
 state = {
-    "goal": "take-off and land",
+    "messages": [HumanMessage(content="Hi, I'm ready to fly the drone.")],
+    "goal": None,
+    "drone_active": False,
     "telemetry": {},
     "perception": {},
     "action": {},
@@ -326,7 +496,17 @@ print("\n===== Starting drone control loop =====")
 print("Goal:", state.get("goal"))
 print("Initial history:", state.get("history"))
 
-state = app.invoke(state)
+# state = app.invoke(state)
 
+
+# For continuous running with user input
+while True:
+    user_input = input("You: ")
+    if user_input.lower() in ["exit", "quit"]:
+        break
+    new_state = {"messages": [HumanMessage(content=user_input)]}
+    for chunk in app.stream(new_state, stream_mode="updates"):
+        print(chunk)
+        
 print("\n===== Loop finished =====")
 print("Final history:", state.get("history"))

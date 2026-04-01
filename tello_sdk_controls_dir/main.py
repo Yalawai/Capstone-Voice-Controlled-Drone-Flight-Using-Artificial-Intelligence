@@ -94,6 +94,3 @@ class SDK:
         except Exception as e:
             print("Shutdown Failed", e)
 
-sdk = SDK()
-print(sdk.DroneSystemInformation())
-sdk.TakePicture()
