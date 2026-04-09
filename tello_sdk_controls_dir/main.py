@@ -68,17 +68,17 @@ class SDK:
             elif action == "land":
                 self.tello.land()
                 print("land")
-            elif action == "up":
+            elif action == "move_up":
                 self.tello.move_up(numbers)
-            elif action == "down":
+            elif action == "move_down":
                 self.tello.move_down(numbers)
-            elif action == "left":
+            elif action == "move_left":
                 self.tello.move_left(numbers)
-            elif action == "right":
+            elif action == "move_right":
                 self.tello.move_right(numbers)
-            elif action == "rotateclockwise":
+            elif action == "rotate_clockwise":
                 self.tello.rotate_clockwise(numbers)
-            elif action == "rotatecounterclockwise":
+            elif action == "rotate_counter_clockwise":
                 self.tello.rotate_counter_clockwise(numbers)
             elif action == "motoroff":
                 self.tello.turn_motor_off()
