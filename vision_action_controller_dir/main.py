@@ -11,7 +11,6 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import msvcrt
 
-from tello_sdk_controls_dir.main import SDK
 
 load_dotenv()
 
@@ -47,23 +46,7 @@ class GoalCheckOutput(BaseModel):
     reason: str
     message_to_user: Optional[str] = None
     suggested_new_goal: Optional[str] = None
-
-
-# SDK Object
-sdk = SDK()
-
-# Kill switch — polls for '!' using msvcrt (no ctypes dependency)
-def kill_listener():
-    print("Press '!' to EMERGENCY KILL")
-    while True:
-        if msvcrt.kbhit():
-            if msvcrt.getwch() == '!':
-                print("[SAFETY] KILL SWITCH TRIGGERED")
-                sdk.emergency_kill()
-                break
-        time.sleep(0.05)
-threading.Thread(target=kill_listener, daemon=True).start()
-
+    
 
 base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
 
@@ -77,6 +60,7 @@ class State(TypedDict):
     telemetry: Dict[str, Any]
     perception: Dict[str, Any]
     action: Dict[str, Any]
+    proposed_action: Dict[str, Any]
     history: List[str]
 
 
@@ -172,6 +156,7 @@ def executor_node(state: State):
 
 
 def goal_checker(state: State) -> State:
+    """Checks if the current goal is completed, should continue, or needs to abort."""
     print("[CHECKER] Evaluating goal progress...")
 
     if not state.get("drone_active") or not state.get("goal"):
@@ -227,6 +212,18 @@ def route_after_checker(state: State):
         return "vision_planner_agent"
     return "end"
 
+def process_drone_cycle(user_input, image_base64, telemetry):
+    global state
+
+    state["messages"] = [HumanMessage(content=user_input)]
+    state["voice_text"] = user_input
+    state["latest_image"] = image_base64
+    state["telemetry"] = telemetry
+
+    state = app.invoke(state)
+
+    return state.get("proposed_action", {})
+# ────────────────────────────────────────────────
 
 # ── Graph ──────────────────────────────────────────────────────────────────────
 
@@ -239,6 +236,7 @@ graph.add_node("goal_checker", goal_checker)
 graph.set_entry_point("vision_planner_agent")
 graph.add_edge("vision_planner_agent", "executor")
 
+# Router decides whether to go to drone loop or end
 graph.add_conditional_edges(
     "executor",
     route_after_executor,

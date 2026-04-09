@@ -3,6 +3,8 @@ import time
 import cv2
 import re
 import base64
+import os
+import keyboard
 
 from sentry_sdk.utils import single_exception_from_error_tuple
 
@@ -20,7 +22,12 @@ class SDK:
         except:
             print("drone Not connected")
 
+    def emergency_land(self):
+        keyboard.wait("a")
+        print("EMERGENCY LAND")
+        self.DroneFlightController({"action": "land"})
 
+        os._exit(0)
 
     def emergency_kill(self):
         try:
@@ -57,10 +64,8 @@ class SDK:
 
 
 
-    def DroneFlightController(self, action_dict):
+    def DroneFlightController(self, action, numbers):
         try:
-            action = action_dict.get('action','UNKNOWN')
-            numbers = action_dict.get('value',None)
 
             if action == "takeoff":
                 self.tello.takeoff()
