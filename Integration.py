@@ -1,20 +1,88 @@
-import os
-from tello_sdk_controls_dir.main import SDK
-from whisper_cpp.main import main
 import threading
-from vision_action_controller_dir.main import process_drone_cycle
+import msvcrt
+import time
+from concurrent.futures import ThreadPoolExecutor
 
+from tello_sdk_controls_dir.main import SDK
+from whisper_cpp.main import main as get_voice_command
+from vision_action_controller_dir.main import vision_planner_agent, goal_checker
 
+# ── SDK ────────────────────────────────────────────────────────────────────────
 sdk = SDK()
 
+# ── Kill switch ────────────────────────────────────────────────────────────────
+def kill_listener():
+    print("Press '!' to EMERGENCY KILL")
+    while True:
+        if msvcrt.kbhit():
+            if msvcrt.getwch() == '!':
+                print("[SAFETY] KILL SWITCH TRIGGERED")
+                sdk.emergency_kill()
+                break
+        time.sleep(0.05)
+threading.Thread(target=kill_listener, daemon=True).start()
 
-threading.Thread(target=sdk.emergency_land(), daemon=True).start()
+print("\n===== Drone Control Ready =====")
+
+# ── Outer loop: one voice command = one goal run ───────────────────────────────
 while True:
-    voiceCommand = main()
+    #goal = get_voice_command()
+    goal = input("[GOAL]: ")
 
-    proposal = process_drone_cycle(voiceCommand, None, None)
-    amount = 0
-    print("AI proposed:", proposal)
-    if proposal.get("confidence", 0) >= 0.7:
+    # Skip empty or failed transcriptions
+    if not goal or goal.startswith("("):
+        print("[SKIPPED] No valid voice command.")
+        continue
 
-        sdk.DroneFlightController(proposal["action"], proposal["value"])
+    if goal.strip().lower() in ["exit", "quit"]:
+        break
+
+    print(f"\n[GOAL] {goal}")
+
+    drone_active = True
+    history = []
+    perception = {}
+    telemetry = {}
+    step = 0
+
+    # ── Inner loop: control cycle ──────────────────────────────────────────────
+    while drone_active:
+        # 1. Fetch image + telemetry in parallel
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            pic_future = ex.submit(sdk.TakePicture)
+            tel_future = ex.submit(sdk.DroneSystemInformation)
+            image_b64 = pic_future.result()
+            telemetry = tel_future.result()
+
+        # 2. Vision + planning (single LLM call)
+        result = vision_planner_agent(goal, image_b64, telemetry, history)
+        perception = result["perception"]
+        action = result["action"]
+        # 3. Execute action via SDK
+        action_name = action["action"]
+        value = int(action["value"]) if action.get("value") is not None else 0
+        print(f"\n[EXECUTOR] ───── Step {step + 1} ─────")
+        print(f"[EXECUTOR] Action: {action_name}" + (f" | Value: {value}" if value else ""))
+        print(f"[EXECUTOR] Reason: {action['reason']} | Confidence: {action['confidence']}")
+        sdk.DroneFlightController(action_name, value)
+        history.append(action_name)
+        step += 1
+
+        # 4. Check goal every 3rd step
+        if step % 3 == 0:
+            check = goal_checker(goal, perception, telemetry, history)
+            if check.status in ["completed", "abort", "pause"]:
+                drone_active = False
+                if check.status == "completed":
+                    print(f"[DONE] Goal completed: {goal}")
+                elif check.status == "abort":
+                    print(f"[ABORT] {check.reason}")
+                else:
+                    print("[PAUSE] Drone paused.")
+            if check.suggested_new_goal:
+                goal = check.suggested_new_goal
+                history = []
+                step = 0
+
+sdk.ShutDown()
+print("\n===== Done =====")
