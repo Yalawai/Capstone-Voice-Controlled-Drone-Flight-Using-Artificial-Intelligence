@@ -15,7 +15,6 @@ import threading
 import keyboard
 
 from IPython.display import Image, display
-from tello_sdk_controls_dir.main import SDK
 
 load_dotenv()
 
@@ -58,21 +57,6 @@ class GoalCheckOutput(BaseModel):
     reason: str
     message_to_user: Optional[str] = None
     suggested_new_goal: Optional[str] = None
-    
-
-
-# SDK Object
-sdk = SDK()
-
-# Kill switch code
-def kill_listener():
-    print("Press 'k' to EMERGENCY KILL")
-    keyboard.wait("k")
-    print("[SAFETY] KILL SWITCH TRIGGERED")
-    sdk.emergency_kill()
-# Thread to allow kill command to run anytime
-threading.Thread(target=kill_listener, daemon=True).start()
-
 
 base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
 
@@ -82,13 +66,13 @@ router_llm = base_llm.with_structured_output(UserIntent)
 checker_llm = base_llm.with_structured_output(GoalCheckOutput)
 
 class State(TypedDict):
-    
     messages: Annotated[List[BaseMessage], add_messages]
     goal: Optional[str]
     drone_active: bool
     telemetry: Dict[str, Any]
     perception: Dict[str, Any]
     action: Dict[str, Any]
+    proposed_action: Dict[str, Any]
     history: List[str]
 
 
@@ -148,64 +132,44 @@ Be concise, friendly, and safe. Never promise impossible actions.
 
 def vision_agent(state: State) -> State:
     print("[VISION] Starting vision processing...")
-    #gets the image from the drone --- to do
-    image_base64 = sdk.TakePicture()
+    image_base64 = state.get("latest_image")
+
+    if not image_base64:
+        return {
+            "perception": {
+                "objects": [],
+                "obstacles": [],
+                "free_space": [],
+                "environment": "unknown",
+                "risk_level": "high"
+            }
+        }
 
     prompt = [
         SystemMessage(content="""
-                      
-                      You are the perception system of a drone.
+You are the perception system of a drone.
 
 Your job is to convert a single camera image into a structured description of the environment.
 
-You must ONLY report what is clearly visible.
-Do NOT guess, infer, or hallucinate.
-
----
-
 RULES:
-
-- Only include objects that are clearly visible.
-- If unsure, omit the object.
-- Do NOT invent objects or obstacles.
-- Be conservative: reporting less is better than being wrong.
-
----
+- Only include objects that are clearly visible
+- Do NOT guess or hallucinate
+- Be conservative
 
 SPATIAL DEFINITIONS:
+- left = left third
+- center = middle
+- right = right third
 
-- direction:
-  - "left" = left third of image
-  - "center" = middle
-  - "right" = right third
-
-- distance:
-  - "near" = immediate collision risk
-  - "medium" = reachable in a few moves
-  - "far" = distant
-
----
-
-OUTPUT REQUIREMENTS:
-
-- Output MUST match the schema exactly.
-- No extra fields.
-- No explanations.
-- No text outside the structured output.
-
----
+DISTANCE:
+- near = immediate danger
+- medium = reachable soon
+- far = distant
 
 IMPORTANT:
-
-Your output directly affects real-world movement.
-Incorrect data may cause a crash.
-
+Incorrect output may cause a crash.
 Be precise and cautious.
-                      
-                      
-                      
-                      
-                      """),
+        """),
         HumanMessage(content=[
             {
                 "type": "image",
@@ -215,14 +179,9 @@ Be precise and cautious.
         ])
     ]
 
-    print("[VISION] Sending to structured LLM...")
-    
     try:
         perception = vision_llm.invoke(prompt)
-        print("[VISION] Structured output received")
-        print(perception.model_dump())
-    except Exception as e:
-        print("[VISION] Structured parsing failed:", e)
+    except Exception:
         perception = VisionOutput(
             objects=[],
             obstacles=[],
@@ -232,7 +191,6 @@ Be precise and cautious.
         )
 
     return {
-        "telemetry": sdk.DroneSystemInformation(),
         "perception": perception.model_dump()
     }
 
@@ -335,28 +293,26 @@ Be precise, cautious, and consistent.
     return {
         "action": decision.model_dump()
     }
-    
 
 def executor_node(state: State):
-    action_dict = state.get("action")
-    action = action_dict.get('action', 'UNKNOWN')
-    value = action_dict.get('value', None)
+    action_dict = state.get("action", {})
+    action = action_dict.get("action", "UNKNOWN")
+    value = action_dict.get("value", None)
 
-    print(f"\n[EXECUTOR] ───── Step {len(state.get('history')) + 1} ─────")
-    print(f"[EXECUTOR] Chosen action: {action}")
+    print(f"\n[EXECUTOR] Proposed Step {len(state.get('history', [])) + 1}")
+    print(f"[EXECUTOR] Proposed action: {action}")
     if value is not None:
         print(f"[EXECUTOR] Value: {value}")
     print(f"[EXECUTOR] Reason: {action_dict.get('reason', '—')}")
     print(f"[EXECUTOR] Confidence: {action_dict.get('confidence', '—')}")
 
-    sdk.DroneFlightController(action_dict)
+    history = state.get("history", [])
+    history.append(action)
 
-    state.get("history").append(action)
-    print(f"[EXECUTOR] Action appended to history. New length: {len(state.get('history'))}")
-    
-    return state
-
-
+    return {
+        "history": history,
+        "proposed_action": action_dict
+    }
 
 def goal_checker(state: State) -> State:
     """Checks if the current goal is completed, should continue, or needs to abort."""
@@ -433,6 +389,17 @@ def route_after_checker(state: State):
     else:
         return "end"     # go back to conversation mode
 
+def process_drone_cycle(user_input, image_base64, telemetry):
+    global state
+
+    state["messages"] = [HumanMessage(content=user_input)]
+    state["voice_text"] = user_input
+    state["latest_image"] = image_base64
+    state["telemetry"] = telemetry
+
+    state = app.invoke(state)
+
+    return state.get("proposed_action", {})
 # ────────────────────────────────────────────────
 
 
@@ -489,24 +456,22 @@ state = {
     "telemetry": {},
     "perception": {},
     "action": {},
+    "proposed_action": {},
     "history": []
 }
 
-print("\n===== Starting drone control loop =====")
-print("Goal:", state.get("goal"))
-print("Initial history:", state.get("history"))
+if __name__ == "__main__":
+    print("\n===== Starting drone control loop =====")
+    print("Goal:", state.get("goal"))
+    print("Initial history:", state.get("history"))
 
-# state = app.invoke(state)
+    while True:
+        user_input = input("You: ")
+        if user_input.lower() in ["exit", "quit"]:
+            break
+        new_state = {"messages": [HumanMessage(content=user_input)]}
+        for chunk in app.stream(new_state, stream_mode="updates"):
+            print(chunk)
 
-
-# For continuous running with user input
-while True:
-    user_input = input("You: ")
-    if user_input.lower() in ["exit", "quit"]:
-        break
-    new_state = {"messages": [HumanMessage(content=user_input)]}
-    for chunk in app.stream(new_state, stream_mode="updates"):
-        print(chunk)
-        
-print("\n===== Loop finished =====")
-print("Final history:", state.get("history"))
+    print("\n===== Loop finished =====")
+    print("Final history:", state.get("history"))
