@@ -34,10 +34,9 @@ class VisionPlanOutput(BaseModel):
     confidence: float
 
 class GoalCheckOutput(BaseModel):
-    status: Literal["continue", "completed", "abort", "pause"]
+    status: Literal["continue", "completed", "abort"]
     reason: str
     message_to_user: Optional[str] = None
-    suggested_new_goal: Optional[str] = None
 
 
 class CombinedOutput(BaseModel):
@@ -58,10 +57,9 @@ class CombinedOutput(BaseModel):
     reason: str
     confidence: float
     # Goal check
-    goal_status: Literal["continue", "completed", "abort", "pause"]
+    goal_status: Literal["continue", "completed", "abort"]
     goal_reason: str
     message_to_user: Optional[str] = None
-    suggested_new_goal: Optional[str] = None
 
 
 base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
@@ -82,9 +80,8 @@ ACTION:
 - value: required for movement/rotation, null otherwise.
 
 GOAL CHECK:
-- goal_status: continue / completed / abort / pause.
-- Be conservative: high risk_level → abort or pause.
-- suggested_new_goal: only if a better sub-goal is obvious.
+- goal_status: continue / completed / abort.
+- Be conservative: high risk_level → abort.
 
 Output must match the schema exactly. No extra text."""
 
@@ -136,7 +133,6 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
         status=d["goal_status"],
         reason=d["goal_reason"],
         message_to_user=d.get("message_to_user"),
-        suggested_new_goal=d.get("suggested_new_goal"),
     )
 
     return {

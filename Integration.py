@@ -71,18 +71,11 @@ while True:
         step += 1
 
         # 4. Check goal (now evaluated every step via combined LLM call)
-        if check.status in ["completed", "abort", "pause"]:
-            drone_active = False
+        if check.status in ["completed", "abort"]:
             if check.status == "completed":
                 print(f"[DONE] Goal completed: {goal}")
-            elif check.status == "abort":
-                print(f"[ABORT] {check.reason}")
             else:
-                print("[PAUSE] Drone paused.")
-        if check.suggested_new_goal:
-            goal = check.suggested_new_goal
-            history = []
-            step = 0
-
+                print(f"[ABORT] {check.reason}")
+            drone_active = False
 sdk.ShutDown()
 print("\n===== Done =====")
