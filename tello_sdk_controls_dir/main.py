@@ -70,7 +70,7 @@ class SDK:
     def telemetry_thread(self, stop_event):
         while not stop_event.wait(5):
             try:
-                self.tello.send_keepalive()
+                self.tello.send_command_without_return("command")
                 state = self.DroneSystemInformation()
                 if state:
                     print(
