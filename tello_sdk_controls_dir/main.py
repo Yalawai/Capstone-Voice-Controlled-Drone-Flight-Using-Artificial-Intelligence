@@ -67,13 +67,17 @@ class SDK:
 
 
 
-    def send_keepalive(self, stop_event):
-        """Sends keepalive packets every 10s until stop_event is set."""
-        while not stop_event.wait(10):
-            try:
-                self.tello.send_keepalive()
-            except Exception:
-                pass
+    def telemetry_thread(self, stop_event):
+        while not stop_event.wait(5):
+            state = self.DroneSystemInformation()
+            if state:
+                print(
+                    f"[TELEMETRY] "
+                    f"Batt: {state.get('bat', '?')}% | "
+                    f"Alt: {state.get('h', '?')}cm | "
+                    f"Temp: {state.get('templ', '?')}-{state.get('temph', '?')}°C | "
+                    f"Pitch: {state.get('pitch', '?')} Roll: {state.get('roll', '?')} Yaw: {state.get('yaw', '?')}"
+                )
 
     def DroneFlightController(self, action, numbers):
         try:

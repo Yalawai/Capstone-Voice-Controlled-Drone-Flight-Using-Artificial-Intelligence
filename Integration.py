@@ -58,7 +58,7 @@ while True:
         # 2. Vision + planning + goal check (single LLM call)
         # Keep the Tello alive during the LLM call (drone auto-lands after 15s without commands)
         stop_keepalive = Event()
-        keepalive_thread = threading.Thread(target=sdk.send_keepalive, args=(stop_keepalive,), daemon=True)
+        keepalive_thread = threading.Thread(target=sdk.telemetry_thread, args=(stop_keepalive,), daemon=True)
         keepalive_thread.start()
         result = vision_planner_agent(goal, image_b64, telemetry, history)
         stop_keepalive.set()
