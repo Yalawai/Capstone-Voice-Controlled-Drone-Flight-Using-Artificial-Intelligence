@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from tello_sdk_controls_dir.main import SDK
 from whisper_cpp.main import main as get_voice_command
-from vision_action_controller_dir.main import vision_planner_agent, goal_checker
+from vision_action_controller_dir.main import vision_planner_agent
 
 # ── SDK ────────────────────────────────────────────────────────────────────────
 sdk = SDK()
@@ -54,10 +54,12 @@ while True:
             image_b64 = pic_future.result()
             telemetry = tel_future.result()
 
-        # 2. Vision + planning (single LLM call)
+        # 2. Vision + planning + goal check (single LLM call)
         result = vision_planner_agent(goal, image_b64, telemetry, history)
         perception = result["perception"]
         action = result["action"]
+        check = result["goal_check"]
+
         # 3. Execute action via SDK
         action_name = action["action"]
         value = int(action["value"]) if action.get("value") is not None else 0
@@ -68,21 +70,19 @@ while True:
         history.append(action_name)
         step += 1
 
-        # 4. Check goal every 3rd step
-        if step % 3 == 0:
-            check = goal_checker(goal, perception, telemetry, history)
-            if check.status in ["completed", "abort", "pause"]:
-                drone_active = False
-                if check.status == "completed":
-                    print(f"[DONE] Goal completed: {goal}")
-                elif check.status == "abort":
-                    print(f"[ABORT] {check.reason}")
-                else:
-                    print("[PAUSE] Drone paused.")
-            if check.suggested_new_goal:
-                goal = check.suggested_new_goal
-                history = []
-                step = 0
+        # 4. Check goal (now evaluated every step via combined LLM call)
+        if check.status in ["completed", "abort", "pause"]:
+            drone_active = False
+            if check.status == "completed":
+                print(f"[DONE] Goal completed: {goal}")
+            elif check.status == "abort":
+                print(f"[ABORT] {check.reason}")
+            else:
+                print("[PAUSE] Drone paused.")
+        if check.suggested_new_goal:
+            goal = check.suggested_new_goal
+            history = []
+            step = 0
 
 sdk.ShutDown()
 print("\n===== Done =====")

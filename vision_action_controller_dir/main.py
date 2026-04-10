@@ -40,14 +40,37 @@ class GoalCheckOutput(BaseModel):
     suggested_new_goal: Optional[str] = None
 
 
+class CombinedOutput(BaseModel):
+    # Perception
+    objects: List[ObjectItem]
+    obstacles: List[ObstacleItem]
+    free_space: List[Literal["left", "center", "right"]]
+    environment: Literal["indoor", "outdoor", "unknown"]
+    risk_level: Literal["low", "medium", "high"]
+    # Action
+    action: Literal[
+        "takeoff", "land", "hover",
+        "move_forward", "move_back", "move_left", "move_right",
+        "move_up", "move_down",
+        "rotate_clockwise", "rotate_counter_clockwise"
+    ]
+    value: Optional[float]
+    reason: str
+    confidence: float
+    # Goal check
+    goal_status: Literal["continue", "completed", "abort", "pause"]
+    goal_reason: str
+    message_to_user: Optional[str] = None
+    suggested_new_goal: Optional[str] = None
+
+
 base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
-vision_planner_llm = base_llm.with_structured_output(VisionPlanOutput)
-checker_llm = base_llm.with_structured_output(GoalCheckOutput)
+combined_llm = base_llm.with_structured_output(CombinedOutput)
 
 
-VISION_PLANNER_SYSTEM = """You are the perception and control system of an autonomous drone.
+COMBINED_SYSTEM = """You are the perception, control, and goal-supervision system of an autonomous drone.
 
-Analyze the camera image and choose the next action in one pass.
+Analyze the camera image and do all three tasks in one pass:
 
 PERCEPTION:
 - Report only clearly visible objects/obstacles. Do NOT hallucinate.
@@ -58,21 +81,22 @@ ACTION:
 - SAFETY FIRST: never move toward obstacles. High risk_level → hover or rotate.
 - value: required for movement/rotation, null otherwise.
 
-Output must match the schema exactly. No extra text."""
+GOAL CHECK:
+- goal_status: continue / completed / abort / pause.
+- Be conservative: high risk_level → abort or pause.
+- suggested_new_goal: only if a better sub-goal is obvious.
 
-CHECKER_SYSTEM = """You are the goal supervisor for an autonomous drone.
-Decide: continue / completed / abort / pause.
-Be conservative: high risk_level → abort or pause."""
+Output must match the schema exactly. No extra text."""
 
 
 def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history: list) -> dict:
-    """Analyzes image and plans next action.
-    Returns {"perception": {...}, "action": {...}}
+    """Analyzes image, plans next action, and checks goal status in a single LLM call.
+    Returns {"perception": {...}, "action": {...}, "goal_check": GoalCheckOutput}
     """
-    print("[VISION+PLANNER] Sending to LLM...")
+    print("[VISION+PLANNER+CHECKER] Sending to LLM...")
 
     prompt = [
-        SystemMessage(content=VISION_PLANNER_SYSTEM),
+        SystemMessage(content=COMBINED_SYSTEM),
         HumanMessage(content=[
             {
                 "type": "image",
@@ -91,46 +115,32 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
     ]
 
     try:
-        result = vision_planner_llm.invoke(prompt)
-        print("[VISION+PLANNER] Result:")
+        result = combined_llm.invoke(prompt)
+        print("[VISION+PLANNER+CHECKER] Result:")
         print(result.model_dump())
     except Exception as e:
-        print("[VISION+PLANNER] Failed, fallback to hover:", e)
-        result = VisionPlanOutput(
+        print("[VISION+PLANNER+CHECKER] Failed, fallback to hover:", e)
+        result = CombinedOutput(
             objects=[], obstacles=[], free_space=[],
             environment="unknown", risk_level="high",
             action="hover", value=None,
-            reason="fallback due to parsing error", confidence=0.0
+            reason="fallback due to parsing error", confidence=0.0,
+            goal_status="continue", goal_reason="fallback due to parsing error"
         )
 
     d = result.model_dump()
     perception_keys = ("objects", "obstacles", "free_space", "environment", "risk_level")
     action_keys = ("action", "value", "reason", "confidence")
 
+    goal_check = GoalCheckOutput(
+        status=d["goal_status"],
+        reason=d["goal_reason"],
+        message_to_user=d.get("message_to_user"),
+        suggested_new_goal=d.get("suggested_new_goal"),
+    )
+
     return {
         "perception": {k: d[k] for k in perception_keys},
         "action": {k: d[k] for k in action_keys},
+        "goal_check": goal_check,
     }
-
-
-def goal_checker(goal: str, perception: dict, telemetry: dict, history: list) -> GoalCheckOutput:
-    """Checks whether the goal is done, should continue, or needs to abort."""
-    print("[CHECKER] Evaluating goal progress...")
-
-    prompt = [
-        SystemMessage(content=CHECKER_SYSTEM),
-        HumanMessage(content=(
-            f"Goal: {goal}\n"
-            f"Perception: {json.dumps(perception)}\n"
-            f"Telemetry: {json.dumps(telemetry)}\n"
-            f"History (last 10): {history[-10:]}"
-        ))
-    ]
-
-    try:
-        check = checker_llm.invoke(prompt)
-        print(f"[CHECKER] Status: {check.status} | Reason: {check.reason}")
-        return check
-    except Exception as e:
-        print("[CHECKER] Failed, default continue:", e)
-        return GoalCheckOutput(status="continue", reason="parsing fallback")
