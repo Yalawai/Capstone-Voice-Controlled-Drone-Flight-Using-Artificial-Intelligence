@@ -67,6 +67,14 @@ class SDK:
 
 
 
+    def send_keepalive(self, stop_event):
+        """Sends keepalive packets every 10s until stop_event is set."""
+        while not stop_event.wait(10):
+            try:
+                self.tello.send_keepalive()
+            except Exception:
+                pass
+
     def DroneFlightController(self, action, numbers):
         try:
             if action == "takeoff":

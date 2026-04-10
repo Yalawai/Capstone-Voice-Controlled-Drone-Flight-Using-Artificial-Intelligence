@@ -2,6 +2,7 @@ import threading
 import msvcrt
 import time
 from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 
 from tello_sdk_controls_dir.main import SDK
 from whisper_cpp.main import main as get_voice_command
@@ -55,7 +56,12 @@ while True:
             telemetry = tel_future.result()
 
         # 2. Vision + planning + goal check (single LLM call)
+        # Keep the Tello alive during the LLM call (drone auto-lands after 15s without commands)
+        stop_keepalive = Event()
+        keepalive_thread = threading.Thread(target=sdk.send_keepalive, args=(stop_keepalive,), daemon=True)
+        keepalive_thread.start()
         result = vision_planner_agent(goal, image_b64, telemetry, history)
+        stop_keepalive.set()
         perception = result["perception"]
         action = result["action"]
         check = result["goal_check"]
