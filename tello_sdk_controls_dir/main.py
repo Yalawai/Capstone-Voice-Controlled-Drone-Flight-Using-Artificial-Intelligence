@@ -70,28 +70,28 @@ class SDK:
     def DroneFlightController(self, action, numbers):
         try:
             if action == "takeoff":
-                #self.tello.takeoff()
+                self.tello.takeoff()
                 print("takeoff")
             elif action == "land":
-                #self.tello.land()
+                self.tello.land()
                 print("land")
             elif action == "move_up":
-                #self.tello.move_up(numbers)
+                self.tello.move_up(numbers)
                 print("move_up")
             elif action == "move_down":
-                #self.tello.move_down(numbers)
+                self.tello.move_down(numbers)
                 print("move_down")
             elif action == "move_left":
-                #self.tello.move_left(numbers)
+                self.tello.move_left(numbers)
                 print("move_left")
             elif action == "move_right":
-                #self.tello.move_right(numbers)
+                self.tello.move_right(numbers)
                 print('move_right')
             elif action == "rotate_clockwise":
-                #self.tello.rotate_clockwise(numbers)
+                self.tello.rotate_clockwise(numbers)
                 print("rotate_clockwise")
             elif action == "rotate_counter_clockwise":
-                #self.tello.rotate_counter_clockwise(numbers)
+                self.tello.rotate_counter_clockwise(numbers)
                 print("rotate_counter_clockwise")
             elif action == "motoroff":
                 self.tello.turn_motor_off()

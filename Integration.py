@@ -71,6 +71,7 @@ while True:
         step += 1
 
         # 4. Check goal (now evaluated every step via combined LLM call)
+        print(f"[GOAL CHECK] Status: {check.status} | Reason: {check.reason}")
         if check.status in ["completed", "abort"]:
             if check.status == "completed":
                 print(f"[DONE] Goal completed: {goal}")
