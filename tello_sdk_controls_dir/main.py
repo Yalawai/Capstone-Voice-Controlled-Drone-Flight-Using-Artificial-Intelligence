@@ -5,12 +5,14 @@ import re
 import base64
 import os
 import msvcrt
+import threading
 
 from sentry_sdk.utils import single_exception_from_error_tuple
 
 
 class SDK:
     def __init__(self):
+        self._lock = threading.Lock()
         try:
             self.tello = Tello()
             self.tello.connect()
@@ -70,7 +72,8 @@ class SDK:
     def telemetry_thread(self, stop_event):
         while not stop_event.wait(5):
             try:
-                self.tello.send_command_without_return("command")
+                with self._lock:
+                    self.tello.send_command_without_return("command")
                 state = self.DroneSystemInformation()
                 if state:
                     print(
@@ -84,41 +87,44 @@ class SDK:
                 print("[TELEMETRY] failed:", e)
 
     def DroneFlightController(self, action, numbers):
-        try:
-            if action == "takeoff":
-                self.tello.takeoff()
-                print("takeoff")
-            elif action == "land":
-                self.tello.land()
-                print("land")
-            elif action == "move_up":
-                self.tello.move_up(numbers)
-                print("move_up")
-            elif action == "move_down":
-                self.tello.move_down(numbers)
-                print("move_down")
-            elif action == "move_forward":
-                self.tello.move_forward(numbers)
-            elif action == "move_backward":
-                self.tello.move_back(numbers)
-            elif action == "move_left":
-                self.tello.move_left(numbers)
-                print("move_left")
-            elif action == "move_right":
-                self.tello.move_right(numbers)
-                print('move_right')
-            elif action == "rotate_clockwise":
-                self.tello.rotate_clockwise(numbers)
-                print("rotate_clockwise")
-            elif action == "rotate_counter_clockwise":
-                self.tello.rotate_counter_clockwise(numbers)
-                print("rotate_counter_clockwise")
-            elif action == "hover":
-                print("hover")
-            else:
-                print(action)
-        except Exception as e:
-            print("Drone Flight Controller Failed", e)
+        with self._lock:
+            try:
+                if action == "takeoff":
+                    self.tello.takeoff()
+                    print("takeoff")
+                elif action == "land":
+                    self.tello.land()
+                    print("land")
+                elif action == "move_up":
+                    self.tello.move_up(numbers)
+                    print("move_up")
+                elif action == "move_down":
+                    self.tello.move_down(numbers)
+                    print("move_down")
+                elif action == "move_forward":
+                    self.tello.move_forward(numbers)
+                    print("move_forward")
+                elif action == "move_backward":
+                    self.tello.move_back(numbers)
+                    print("move_backward")
+                elif action == "move_left":
+                    self.tello.move_left(numbers)
+                    print("move_left")
+                elif action == "move_right":
+                    self.tello.move_right(numbers)
+                    print("move_right")
+                elif action == "rotate_clockwise":
+                    self.tello.rotate_clockwise(numbers)
+                    print("rotate_clockwise")
+                elif action == "rotate_counter_clockwise":
+                    self.tello.rotate_counter_clockwise(numbers)
+                    print("rotate_counter_clockwise")
+                elif action == "hover":
+                    print("hover")
+                else:
+                    print(action)
+            except Exception as e:
+                print("Drone Flight Controller Failed", e)
 
     def ShutDown(self):
         try:
