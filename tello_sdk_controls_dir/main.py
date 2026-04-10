@@ -97,6 +97,10 @@ class SDK:
             elif action == "move_down":
                 self.tello.move_down(numbers)
                 print("move_down")
+            elif action == "move_forward":
+                self.tello.move_forward(numbers)
+            elif action == "move_backward":
+                self.tello.move_back(numbers)
             elif action == "move_left":
                 self.tello.move_left(numbers)
                 print("move_left")
@@ -109,8 +113,8 @@ class SDK:
             elif action == "rotate_counter_clockwise":
                 self.tello.rotate_counter_clockwise(numbers)
                 print("rotate_counter_clockwise")
-            elif action == "motoroff":
-                self.tello.turn_motor_off()
+            elif action == "hover":
+                print("hover")
             else:
                 print(action)
         except Exception as e:
