@@ -62,7 +62,7 @@ class CombinedOutput(BaseModel):
     message_to_user: Optional[str] = None
 
 
-base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
+base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash", temperature=0)
 combined_llm = base_llm.with_structured_output(CombinedOutput)
 
 
@@ -105,7 +105,7 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
                 "text": (
                     f"Goal: {goal}\n"
                     f"Telemetry: {json.dumps(telemetry)}\n"
-                    f"History (last 10): {history[-10:]}"
+                    f"History (last 10): {list(history)}"
                 )
             }
         ])
