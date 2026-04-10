@@ -62,7 +62,7 @@ while True:
         keepalive_thread.start()
         result = vision_planner_agent(goal, image_b64, telemetry, history)
         stop_keepalive.set()
-        keepalive_thread.join()
+        keepalive_thread.join(timeout=2)
         perception = result["perception"]
         action = result["action"]
         check = result["goal_check"]

@@ -69,15 +69,19 @@ class SDK:
 
     def telemetry_thread(self, stop_event):
         while not stop_event.wait(5):
-            state = self.DroneSystemInformation()
-            if state:
-                print(
-                    f"[TELEMETRY] "
-                    f"Batt: {state.get('bat', '?')}% | "
-                    f"Alt: {state.get('h', '?')}cm | "
-                    f"Temp: {state.get('templ', '?')}-{state.get('temph', '?')}°C | "
-                    f"Pitch: {state.get('pitch', '?')} Roll: {state.get('roll', '?')} Yaw: {state.get('yaw', '?')}"
-                )
+            try:
+                self.tello.send_keepalive()
+                state = self.DroneSystemInformation()
+                if state:
+                    print(
+                        f"[TELEMETRY] "
+                        f"Batt: {state.get('bat', '?')}% | "
+                        f"Alt: {state.get('h', '?')}cm | "
+                        f"Temp: {state.get('templ', '?')}-{state.get('temph', '?')}°C | "
+                        f"Pitch: {state.get('pitch', '?')} Roll: {state.get('roll', '?')} Yaw: {state.get('yaw', '?')}"
+                    )
+            except Exception as e:
+                print("[TELEMETRY] failed:", e)
 
     def DroneFlightController(self, action, numbers):
         try:
