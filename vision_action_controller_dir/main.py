@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 import threading
 import keyboard
 
-from IPython.display import Image, display
+# from IPython.display import Image, display
 from tello_sdk_controls_dir.main import SDK
 
 load_dotenv()
@@ -64,14 +64,16 @@ class GoalCheckOutput(BaseModel):
 # SDK Object
 sdk = SDK()
 
-# Kill switch code
-def kill_listener():
-    print("Press 'k' to EMERGENCY KILL")
-    keyboard.wait("k")
-    print("[SAFETY] KILL SWITCH TRIGGERED")
-    sdk.emergency_kill()
-# Thread to allow kill command to run anytime
-threading.Thread(target=kill_listener, daemon=True).start()
+def keep_alive():
+    while True:
+        try:
+            sdk.tello.send_keepalive()   # or sdk.tello.send_command("command") if you prefer
+            # Some people also use: sdk.tello.send_rc_control(0, 0, 0, 0)  # neutral sticks
+        except Exception as e:
+            print(f"Keep-alive error: {e}")  # optional, helps debugging
+        time.sleep(5)   # ← changed from 10 to 5 (most reliable)
+
+threading.Thread(target=keep_alive, daemon=True).start()
 
 
 base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
@@ -90,6 +92,8 @@ class State(TypedDict):
     perception: Dict[str, Any]
     action: Dict[str, Any]
     history: List[str]
+    before_action_image: str | None
+    
 
 
 
@@ -148,7 +152,7 @@ Be concise, friendly, and safe. Never promise impossible actions.
 
 def vision_agent(state: State) -> State:
     print("[VISION] Starting vision processing...")
-    #gets the image from the drone --- to do
+    
     image_base64 = sdk.TakePicture()
 
     prompt = [
@@ -233,7 +237,8 @@ Be precise and cautious.
 
     return {
         "telemetry": sdk.DroneSystemInformation(),
-        "perception": perception.model_dump()
+        "perception": perception.model_dump(),
+        "before_action_image": image_base64
     }
 
 def planner_agent(state: State) -> State:
@@ -257,7 +262,7 @@ At each step, choose ONE safe and effective action.
 ---
 
 PRIMARY OBJECTIVE:
-Move toward the user’s goal safely.
+Move toward the user's goal safely.
 
 ---
 
@@ -270,7 +275,7 @@ CORE RULES:
 
 2. SHORT-TERM ACTIONS
 - Output ONLY one action.
-- Keep movements small (20–50 units).
+- Keep movements small (20-50 units).
 - Prefer reversible actions.
 
 3. CONSERVATIVE MOVEMENT
@@ -364,27 +369,74 @@ def goal_checker(state: State) -> State:
 
     if not state.get("drone_active") or not state.get("goal"):
         return {"drone_active": False}
+    
+    image_base64 = sdk.TakePicture()
 
     prompt = [
         SystemMessage(content="""
 You are the goal supervisor for an autonomous drone.
-Analyze the current goal, recent perception, telemetry, action history, and risk level.
 
-Decide:
-- "continue"  → keep flying toward the goal
-- "completed" → goal achieved, stop autonomous mode
-- "abort"     → safety issue, low battery, stuck, or user wants to stop
-- "pause"     → temporary pause (e.g. unclear environment)
+Your job is to make practical, action-oriented decisions to complete the goal efficiently while maintaining reasonable safety.
 
-Be very conservative on safety. If risk_level is "high", prefer abort or pause.
+You must choose ONE:
+- "continue"  → default choice; keep progressing toward the goal
+- "completed" → goal clearly achieved
+- "abort"     → only if there is a clear and immediate danger or critical failure
+- "pause"     → temporary uncertainty that prevents safe progress (rare)
+
+Decision Guidelines:
+- Prefer "continue" unless there is strong evidence to stop.
+- Do NOT abort for minor risks, uncertainty, or imperfect perception.
+- Temporary ambiguity, partial visibility, or small obstacles are NORMAL → continue.
+- Only use "abort" for:
+  - imminent collision with no recovery
+  - critically low battery
+  - loss of control or unstable flight
+  - explicit user stop intent
+- Use "pause" only if the drone is completely stuck or perception is unusable.
+
+Goal Handling:
+- Focus on whether the drone is making progress toward the goal.
+- If progress is being made → continue.
+- If the goal appears achieved based on perception → completed.
+
+Tone:
+- Be decisive, not overly cautious.
+- Avoid unnecessary stopping.
+- Assume the drone is capable of basic obstacle avoidance.
+
+Output:
+- status: one of ["continue", "completed", "abort", "pause"]
+                      
+- reason: short and concrete explanation
+- optional message_to_user
+
         """),
-        HumanMessage(content=f"""
+        HumanMessage(content=[f"""
 Current Goal: {state.get('goal')}
 Drone Active: {state.get('drone_active')}
 Latest Perception: {json.dumps(state.get('perception'), indent=2)}
 Telemetry: {json.dumps(state.get('telemetry'), indent=2)}
 Action History (last 10): {state.get('history', [])[-10:]}
-        """)
+        """,
+        {"type": "text", "text": "Image from the drone before action."},
+         {
+                "type": "image",
+                "base64": state.get('before_action_image'),
+                "mime_type": "image/jpg",
+            },
+            {"type": "text", "text": "Image from the drone after action."},
+         {
+                "type": "image",
+                "base64": image_base64,
+                "mime_type": "image/jpg",
+            },
+
+        
+        
+        ]
+        
+        )
     ]
 
     try:
@@ -506,7 +558,14 @@ while True:
         break
     new_state = {"messages": [HumanMessage(content=user_input)]}
     for chunk in app.stream(new_state, stream_mode="updates"):
-        print(chunk)
+        for node_name, node_updates in chunk.items():
+            print(f"\n--- Update from node: {node_name} ---")
+            if "messages" in node_updates:
+                for msg in node_updates["messages"]:
+                    if hasattr(msg, "pretty_print"):
+                        msg.pretty_print()
+                    else:
+                        print(msg)
         
 print("\n===== Loop finished =====")
 print("Final history:", state.get("history"))
