@@ -172,9 +172,7 @@ def object_avoidance_agent(proposed_action: dict, image_base64: str) -> dict:
     # Non-movement actions don't need obstacle checking
     if action_name not in _MOVEMENT_ACTIONS:
         return {
-            "approved": True,
-            "action": action_name,
-            "value": proposed_action.get("value"),
+            "safe": True,
             "reason": "non-movement action, no avoidance check needed"
         }
 
