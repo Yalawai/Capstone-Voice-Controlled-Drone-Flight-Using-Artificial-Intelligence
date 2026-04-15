@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Literal
+from typing import List, Optional, Literal
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -7,6 +7,8 @@ from pydantic import BaseModel
 
 load_dotenv()
 
+
+# ── Shared sub-models ──────────────────────────────────────────────────────────
 
 class ObjectItem(BaseModel):
     type: str
@@ -17,126 +19,183 @@ class ObstacleItem(BaseModel):
     direction: Literal["left", "center", "right"]
     distance: Literal["near", "medium", "far"]
 
-class VisionPlanOutput(BaseModel):
+_ACTION_LITERAL = Literal[
+    "takeoff", "land", "hover",
+    "move_forward", "move_back", "move_left", "move_right",
+    "move_up", "move_down",
+    "rotate_clockwise", "rotate_counter_clockwise"
+]
+
+class ActionItem(BaseModel):
+    action: _ACTION_LITERAL
+    value: Optional[float] = None   # cm for movement, degrees for rotation, null otherwise
+    reason: str
+
+
+# ── Planner output ─────────────────────────────────────────────────────────────
+
+class PlannerOutput(BaseModel):
     objects: List[ObjectItem]
     obstacles: List[ObstacleItem]
     free_space: List[Literal["left", "center", "right"]]
     environment: Literal["indoor", "outdoor", "unknown"]
     risk_level: Literal["low", "medium", "high"]
-    action: Literal[
-        "takeoff", "land", "hover",
-        "move_forward", "move_back", "move_left", "move_right",
-        "move_up", "move_down",
-        "rotate_clockwise", "rotate_counter_clockwise"
-    ]
-    value: Optional[float]
-    reason: str
+    actions: List[ActionItem]       # ordered sequence of 1-5 actions
     confidence: float
-
-class GoalCheckOutput(BaseModel):
-    status: Literal["continue", "completed", "abort"]
-    reason: str
-    message_to_user: Optional[str] = None
-
-
-class CombinedOutput(BaseModel):
-    # Perception
-    objects: List[ObjectItem]
-    obstacles: List[ObstacleItem]
-    free_space: List[Literal["left", "center", "right"]]
-    environment: Literal["indoor", "outdoor", "unknown"]
-    risk_level: Literal["low", "medium", "high"]
-    # Action
-    action: Literal[
-        "takeoff", "land", "hover",
-        "move_forward", "move_back", "move_left", "move_right",
-        "move_up", "move_down",
-        "rotate_clockwise", "rotate_counter_clockwise"
-    ]
-    value: Optional[float]
-    reason: str
-    confidence: float
-    # Goal check
     goal_status: Literal["continue", "completed", "abort"]
     goal_reason: str
     message_to_user: Optional[str] = None
 
 
-base_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0,thinking_budget=0)
-combined_llm = base_llm.with_structured_output(CombinedOutput)
+# ── Avoidance output ───────────────────────────────────────────────────────────
+
+class AvoidanceOutput(BaseModel):
+    safe: bool      # True = safe to execute, False = skip this action
+    reason: str
 
 
-COMBINED_SYSTEM = """You are the perception, control, and goal-supervision system of an autonomous drone.
+# ── LLMs ──────────────────────────────────────────────────────────────────────
 
-Analyze the camera image and do all three tasks in one pass:
+_planner_llm  = ChatGoogleGenerativeAI(model="gemini-3.1-pro", temperature=0).with_structured_output(PlannerOutput)
+_avoidance_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, thinking_budget=0).with_structured_output(AvoidanceOutput)
+
+
+# ── System prompts ─────────────────────────────────────────────────────────────
+
+_PLANNER_SYSTEM = """You are the perception and planning system of an autonomous drone.
+
+Analyze the camera image and complete all three tasks in one pass:
 
 PERCEPTION:
 - Report only clearly visible objects/obstacles. Do NOT hallucinate.
 - direction: left/center/right (image thirds). distance: near/medium/far.
 
-ACTION:
-- Choose ONE safe action toward the goal. Keep movements small (20-50 units).
-- SAFETY FIRST: never move toward obstacles. High risk_level → hover or rotate.
-- value: required for movement/rotation, null otherwise.
+PLANNING — return an ordered sequence of 1-5 actions:
+- Each action must be safe and progress toward the goal.
+- Keep movements small: 20-50 cm for distance, 20-90 degrees for rotation.
+- value is required for movement/rotation actions, null for takeoff/land/hover.
+- If the drone has not taken off yet, the first action must be "takeoff".
 
 GOAL CHECK:
-- goal_status: continue / completed / abort.
+- goal_status "completed": the goal is fully achieved — stop planning movement.
+- goal_status "abort": situation is unsafe or goal is impossible.
+- goal_status "continue": more steps needed.
 - Be conservative: high risk_level → abort.
 
 Output must match the schema exactly. No extra text."""
 
+_AVOIDANCE_SYSTEM = """You are the obstacle avoidance safety system of an autonomous drone.
+
+You receive the current camera image and a proposed action.
+Respond with safe=true if it is safe to execute, or safe=false if it is not.
+
+RULES:
+- safe=false imminent danger hitting object or environment.
+- safe=true no imminent danger hitting object or environment .
+
+Output must match the schema exactly. No extra text."""
+
+# Movement actions that require a valid value
+_MOVEMENT_ACTIONS = frozenset({
+    "move_forward", "move_back", "move_left", "move_right",
+    "move_up", "move_down", "rotate_clockwise", "rotate_counter_clockwise"
+})
+
+
+# ── Public API ─────────────────────────────────────────────────────────────────
 
 def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history: list) -> dict:
-    """Analyzes image, plans next action, and checks goal status in a single LLM call.
-    Returns {"perception": {...}, "action": {...}, "goal_check": GoalCheckOutput}
+    """Perceives the environment, plans a sequence of actions, and checks goal status.
+
+    Returns:
+        {
+            "perception": { objects, obstacles, free_space, environment, risk_level },
+            "actions":    [ { action, value, reason }, ... ],
+            "confidence": float,
+            "goal_status": "continue" | "completed" | "abort",
+            "goal_reason": str,
+            "message_to_user": str | None,
+        }
     """
-    print("[VISION+PLANNER+CHECKER] Sending to LLM...")
+    print("[PLANNER] Sending to LLM...")
 
     prompt = [
-        SystemMessage(content=COMBINED_SYSTEM),
+        SystemMessage(content=_PLANNER_SYSTEM),
         HumanMessage(content=[
-            {
-                "type": "image",
-                "base64": image_base64,
-                "mime_type": "image/jpg",
-            },
-            {
-                "type": "text",
-                "text": (
-                    f"Goal: {goal}\n"
-                    f"Telemetry: {json.dumps(telemetry)}\n"
-                    f"History (last 10): {list(history)}"
-                )
-            }
+            {"type": "image", "base64": image_base64, "mime_type": "image/jpg"},
+            {"type": "text", "text": (
+                f"Goal: {goal}\n"
+                f"Telemetry: {json.dumps(telemetry)}\n"
+                f"History (last 10): {list(history)}"
+            )}
         ])
     ]
 
     try:
-        result = combined_llm.invoke(prompt)
-        print("[VISION+PLANNER+CHECKER] Result:")
-        print(result.model_dump())
+        result = _planner_llm.invoke(prompt)
+        print("[PLANNER] Plan received:")
+        for i, a in enumerate(result.actions, 1):
+            print(f"  {i}. {a.action}" + (f" {a.value}" if a.value else "") + f" — {a.reason}")
+        print(f"  Goal: {result.goal_status} | {result.goal_reason}")
     except Exception as e:
-        print("[VISION+PLANNER+CHECKER] Failed, fallback to hover:", e)
-        result = CombinedOutput(
+        print("[PLANNER] Failed, hovering:", e)
+        result = PlannerOutput(
             objects=[], obstacles=[], free_space=[],
             environment="unknown", risk_level="high",
-            action="hover", value=None,
-            reason="fallback due to parsing error", confidence=0.0,
-            goal_status="continue", goal_reason="fallback due to parsing error"
+            actions=[ActionItem(action="hover", reason="fallback — planner error")],
+            confidence=0.0,
+            goal_status="continue", goal_reason="fallback — planner error"
         )
 
     d = result.model_dump()
-    perception_keys = ("objects", "obstacles", "free_space", "environment", "risk_level")
-    action_keys = ("action", "value", "reason", "confidence")
-
-    goal_check = GoalCheckOutput(
-        status=d["goal_status"],
-        reason=d["goal_reason"],
-        message_to_user=d.get("message_to_user"),
-    )
-
     return {
-        "perception": {k: d[k] for k in perception_keys},
-        "action": {k: d[k] for k in action_keys},
-        "goal_check": goal_check,
+        "perception": {k: d[k] for k in ("objects", "obstacles", "free_space", "environment", "risk_level")},
+        "actions":    d["actions"],
+        "confidence": d["confidence"],
+        "goal_status": d["goal_status"],
+        "goal_reason": d["goal_reason"],
+        "message_to_user": d.get("message_to_user"),
     }
+
+
+def object_avoidance_agent(proposed_action: dict, image_base64: str) -> dict:
+    """Checks whether a proposed action is safe given the current camera image.
+
+    Skips the LLM check for non-movement actions (takeoff, land, hover) and
+    approves them immediately.
+
+    Returns AvoidanceOutput as a dict:
+        { "safe": bool, "reason": str }
+    """
+    action_name = proposed_action["action"]
+
+    # Non-movement actions don't need obstacle checking
+    if action_name not in _MOVEMENT_ACTIONS:
+        return {
+            "approved": True,
+            "action": action_name,
+            "value": proposed_action.get("value"),
+            "reason": "non-movement action, no avoidance check needed"
+        }
+
+    print(f"[AVOIDANCE] Checking: {action_name} value={proposed_action.get('value')}")
+
+    prompt = [
+        SystemMessage(content=_AVOIDANCE_SYSTEM),
+        HumanMessage(content=[
+            {"type": "image", "base64": image_base64, "mime_type": "image/jpg"},
+            {"type": "text", "text": (
+                f"Proposed action: {action_name}\n"
+                f"Value: {proposed_action.get('value')}\n"
+                f"Reason: {proposed_action.get('reason', '')}"
+            )}
+        ])
+    ]
+
+    try:
+        result = _avoidance_llm.invoke(prompt)
+        print(f"[AVOIDANCE] {'SAFE' if result.safe else 'UNSAFE'}: {result.reason}")
+        return result.model_dump()
+    except Exception as e:
+        print("[AVOIDANCE] Failed, blocking for safety:", e)
+        return {"safe": False, "reason": f"avoidance check error: {e}"}

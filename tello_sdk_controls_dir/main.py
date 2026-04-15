@@ -46,41 +46,53 @@ class SDK:
             return None
 
     def DroneFlightController(self, action, numbers):
+        _MOVEMENT_ACTIONS = {
+            "move_forward", "move_back", "move_left", "move_right",
+            "move_up", "move_down", "rotate_clockwise", "rotate_counter_clockwise"
+        }
+        if action in _MOVEMENT_ACTIONS:
+            if numbers < 20:
+                print(f"[SDK] Skipping {action}: value {numbers} is below minimum 20")
+                return
+            if numbers > 500:
+                numbers = 500
+                print(f"[SDK] Clamped {action} value to 500")
+
         try:
             if action == "takeoff":
-                #self.tello.takeoff()
+                self.tello.takeoff()
                 print("takeoff")
             elif action == "land":
-                #self.tello.land()
+                self.tello.land()
                 print("land")
             elif action == "move_up":
-                #self.tello.move_up(numbers)
-                print("move_up")
+                self.tello.move_up(numbers)
+                print("move_up", numbers)
             elif action == "move_down":
-                #self.tello.move_down(numbers)
-                print("move_down")
+                self.tello.move_down(numbers)
+                print("move_down", numbers)
             elif action == "move_forward":
-                #self.tello.move_forward(numbers)
-                print("move_forward")
-            elif action == "move_backward":
-                #self.tello.move_back(numbers)
-                print("move_backward")
+                self.tello.move_forward(numbers)
+                print("move_forward", numbers)
+            elif action == "move_back":
+                self.tello.move_back(numbers)
+                print("move_back", numbers)
             elif action == "move_left":
-                #self.tello.move_left(numbers)
-                print("move_left")
+                self.tello.move_left(numbers)
+                print("move_left", numbers)
             elif action == "move_right":
-                #self.tello.move_right(numbers)
-                print("move_right")
+                self.tello.move_right(numbers)
+                print("move_right", numbers)
             elif action == "rotate_clockwise":
-                #self.tello.rotate_clockwise(numbers)
-                print("rotate_clockwise")
+                self.tello.rotate_clockwise(numbers)
+                print("rotate_clockwise", numbers)
             elif action == "rotate_counter_clockwise":
-                #self.tello.rotate_counter_clockwise(numbers)
-                print("rotate_counter_clockwise")
+                self.tello.rotate_counter_clockwise(numbers)
+                print("rotate_counter_clockwise", numbers)
             elif action == "hover":
                 print("hover")
             else:
-                print(action)
+                print(f"[SDK] Unknown action: {action}")
         except Exception as e:
             print("Drone Flight Controller Failed", e)
 
