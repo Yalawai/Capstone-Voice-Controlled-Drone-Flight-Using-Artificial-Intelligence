@@ -12,7 +12,7 @@ from vision_action_controller_dir.main import vision_planner_agent, object_avoid
 # ── SDK ────────────────────────────────────────────────────────────────────────
 sdk = SDK()
 
-MIN_CALL_INTERVAL = 1.0  # minimum seconds between LLM calls
+MIN_CALL_INTERVAL = 1  # minimum seconds between LLM calls
 
 # ── Kill switch ────────────────────────────────────────────────────────────────
 kill_switch = Event()
@@ -50,6 +50,8 @@ while not kill_switch.is_set():
         break
 
     print(f"\n[GOAL] {goal}")
+
+    sdk.DroneFlightController("takeoff", 0)
 
     drone_active = True
     history = deque(maxlen=10)
