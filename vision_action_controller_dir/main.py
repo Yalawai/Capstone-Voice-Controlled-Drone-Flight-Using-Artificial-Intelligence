@@ -62,7 +62,7 @@ class CombinedOutput(BaseModel):
     message_to_user: Optional[str] = None
 
 
-base_llm = ChatGoogleGenerativeAI(model="gemini-3-flash", temperature=0)
+base_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0,thinking_budget=0)
 combined_llm = base_llm.with_structured_output(CombinedOutput)
 
 
