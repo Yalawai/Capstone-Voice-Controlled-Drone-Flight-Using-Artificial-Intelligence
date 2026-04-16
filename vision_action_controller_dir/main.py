@@ -57,7 +57,7 @@ class AvoidanceOutput(BaseModel):
 # ── LLMs ──────────────────────────────────────────────────────────────────────
 
 _planner_llm  = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0).with_structured_output(PlannerOutput)
-_avoidance_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, thinking_budget=0).with_structured_output(AvoidanceOutput)
+_avoidance_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, thinking_budget=512).with_structured_output(AvoidanceOutput)
 
 
 # ── System prompts ─────────────────────────────────────────────────────────────
@@ -95,25 +95,28 @@ Output must match the schema exactly. No extra text."""
 _AVOIDANCE_SYSTEM = """You are the obstacle avoidance safety system of an autonomous drone with a forward-facing camera.
 
 You receive the current camera image and a proposed action.
-Your job is to estimate whether any obstacle is within 30 centimeters of the drone.
+Your job: decide if an obstacle is within 20 cm of the drone in the direction of the proposed action.
 
-DISTANCE ESTIMATION GUIDE — use these visual cues:
+DEFAULT TO safe=true. Only return safe=false if you are highly confident an obstacle is within 20 cm.
 
-1. FRAME COVERAGE: If an object or surface fills more than 50% of the frame width or height, it is likely within 30 cm. If it fills 25–50%, it is roughly 30–60 cm away. Less than 25% means it is likely further than 60 cm.
+DISTANCE ESTIMATION — visual cues for the direction of travel only:
 
-2. TEXTURE DETAIL: Surfaces very close (under 20 cm) show extreme texture detail — individual fibres, grain, pores, or paint texture are clearly visible. Distant surfaces look smoother and less detailed.
+1. FRAME COVERAGE: A surface filling >80% of frame width AND height is likely within 20 cm. 50–80% → ~20–50 cm (likely safe). Under 50% → safe.
 
-3. EDGE SHARPNESS: A nearby object has sharp, high-contrast edges that dominate the frame. A far object has softer edges and blends more into the background.
+2. TEXTURE DETAIL: Under 20 cm you can see individual fibres, grain, or pores clearly. Moderate detail = 20–50 cm. Smooth/blurry = far away.
 
-4. OBJECT SIZE: Common reference objects — a wall takes up the entire frame at under 20 cm. A doorframe would appear very wide. A person's face would fill most of the frame.
+3. OBJECT SIZE REFERENCE: Wall fills entire frame only at ~10–15 cm. A person's torso filling full frame height ≈ 15 cm. At 50 cm a person fills ~30% of frame height.
 
-5. DEPTH OF FIELD: Objects extremely close may appear slightly soft/blurred at the edges due to the camera's focus limit.
+4. Only consider what is directly in the path of the action:
+   - move_forward / move_back: centre of frame
+   - move_left / move_right: left or right side of frame respectively
+   - move_up / move_down: top or bottom of frame respectively
+   - Ignore objects that are clearly to the side and not in the path.
 
 RULES:
-- safe=false ONLY if your visual analysis concludes an obstacle is 30 cm or closer in the direction of the proposed action.
-- safe=true if all obstacles appear further than 20 cm away.
-- Only consider obstacles in the direction of the proposed action (e.g. for move_forward, only check what is directly ahead).
-- Think through the visual cues step by step in your reason field before deciding.
+- safe=false ONLY if you are highly confident an obstacle is 20 cm or closer in the direction of travel.
+- If uncertain, return safe=true.
+- Explain your visual reasoning in the reason field.
 
 Output must match the schema exactly. No extra text."""
 
