@@ -12,12 +12,14 @@ load_dotenv()
 
 class ObjectItem(BaseModel):
     type: str
-    angle: int      # relative angle from drone forward direction, negative=left, positive=right, range -41 to +41
-    distance: str   # estimated distance in cm e.g. "150cm", or "unknown"
+    angle: int           # horizontal relative angle from drone forward, negative=left, positive=right, range -41 to +41
+    vertical_angle: int  # vertical relative angle, negative=below center, positive=above center, range -30 to +30
+    distance: str        # estimated distance in cm e.g. "150cm", or "unknown"
 
 class ObstacleItem(BaseModel):
-    angle: int      # relative angle from drone forward direction, negative=left, positive=right, range -41 to +41
-    distance: str   # estimated distance in cm e.g. "150cm", or "unknown"
+    angle: int           # horizontal relative angle from drone forward, negative=left, positive=right, range -41 to +41
+    vertical_angle: int  # vertical relative angle, negative=below center, positive=above center, range -30 to +30
+    distance: str        # estimated distance in cm e.g. "150cm", or "unknown"
 
 _ACTION_LITERAL = Literal[
     "takeoff", "land", "hover",
@@ -68,7 +70,8 @@ Analyze the camera image and complete all three tasks in one pass:
 
 PERCEPTION:
 - Report only clearly visible objects/obstacles. Do NOT hallucinate.
-- angle: relative angle in degrees from the drone's forward direction. Negative = left, positive = right. Range -41 to +41 (matches the camera's ~82° FOV). e.g. dead center = 0, far left edge = -41, far right edge = 41.
+- angle: horizontal relative angle in degrees from the drone's forward direction. Negative = left, positive = right. Range -41 to +41 (matches the camera's ~82° horizontal FOV). e.g. dead center = 0, far left edge = -41, far right edge = 41.
+- vertical_angle: vertical relative angle in degrees. Negative = below center, positive = above center. Range -30 to +30 (matches ~60° vertical FOV). e.g. level with drone = 0, top edge = +30, bottom edge = -30.
 - distance: estimate in centimeters based on the object's known real-world size and how much of the frame it fills. Return as e.g. "150cm". If you cannot estimate, return "unknown".
 
 DISTANCE ESTIMATION GUIDE (Tello camera ~82° FOV):
@@ -94,29 +97,34 @@ Output must match the schema exactly. No extra text."""
 
 _AVOIDANCE_SYSTEM = """You are the obstacle avoidance safety system of an autonomous drone with a forward-facing camera.
 
-You receive the current camera image and a proposed action.
-Your job: decide if an obstacle is within 20 cm of the drone in the direction of the proposed action.
+You receive a camera image, a proposed action, and a list of detected objects/obstacles with their angles and distances.
 
-DEFAULT TO safe=true. Only return safe=false if you are highly confident an obstacle is within 20 cm.
+Your job: decide if an obstacle is within 15 cm of the drone in the direction of the proposed action.
 
-DISTANCE ESTIMATION — visual cues for the direction of travel only:
+DEFAULT TO safe=true. Only return safe=false if you are highly confident an obstacle is within 15 cm.
 
-1. FRAME COVERAGE: A surface filling >80% of frame width AND height is likely within 20 cm. 50–80% → ~20–50 cm (likely safe). Under 50% → safe.
+STEP 1 — check the object list first:
+- Each object has a horizontal angle (negative=left, positive=right, range ±41°) and vertical angle (negative=below, positive=above, range ±30°).
+- For the proposed action, determine which objects are in the path:
+  - move_forward: horizontal angle within ±20°, vertical angle within ±20°
+  - move_back: horizontal angle outside ±160° (i.e. behind), vertical within ±20°
+  - move_left: horizontal angle -41° to -20°, vertical within ±20°
+  - move_right: horizontal angle +20° to +41°, vertical within ±20°
+  - move_up: vertical angle +10° to +30°
+  - move_down: vertical angle -10° to -30°
+  - rotate_clockwise / rotate_counter_clockwise: no path obstruction, always safe
+- If an object in the path has a known distance ≤ 15 cm → safe=false immediately.
+- If all in-path objects have distance > 15 cm or "unknown" → proceed to Step 2.
 
-2. TEXTURE DETAIL: Under 20 cm you can see individual fibres, grain, or pores clearly. Moderate detail = 20–50 cm. Smooth/blurry = far away.
-
-3. OBJECT SIZE REFERENCE: Wall fills entire frame only at ~10–15 cm. A person's torso filling full frame height ≈ 15 cm. At 50 cm a person fills ~30% of frame height.
-
-4. Only consider what is directly in the path of the action:
-   - move_forward / move_back: centre of frame
-   - move_left / move_right: left or right side of frame respectively
-   - move_up / move_down: top or bottom of frame respectively
-   - Ignore objects that are clearly to the side and not in the path.
+STEP 2 — visual confirmation (only if object list is inconclusive):
+- Frame coverage: a surface filling >90% of BOTH frame width AND height → within 15 cm. Less than that → likely safe.
+- Texture: visible individual fibres/grain/pores = under 15 cm. Anything less detailed = safe.
+- If uncertain from visuals → safe=true.
 
 RULES:
-- safe=false ONLY if you are highly confident an obstacle is 20 cm or closer in the direction of travel.
-- If uncertain, return safe=true.
-- Explain your visual reasoning in the reason field.
+- safe=false ONLY if Step 1 gives a confirmed hit OR Step 2 shows unmistakable proximity.
+- Err heavily on the side of safe=true.
+- Explain your reasoning (object list check + visual check) in the reason field.
 
 Output must match the schema exactly. No extra text."""
 
@@ -146,9 +154,12 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
 
     memory_text = ""
     if object_memory:
-        memory_text = "\nPreviously seen objects (type | abs_angle_from_origin | distance | step_seen):\n"
+        memory_text = "\nPreviously seen objects (type | h_angle_from_origin | v_angle | distance | step_seen):\n"
         for obj in object_memory:
-            memory_text += f"  - {obj['type']} | {obj['abs_angle']}° | {obj['distance']} | step {obj['step']}\n"
+            memory_text += (
+                f"  - {obj['type']} | h={obj['abs_angle']}° | v={obj.get('abs_vertical_angle', 0)}°"
+                f" | {obj['distance']} | step {obj['step']}\n"
+            )
 
     prompt = [
         SystemMessage(content=_PLANNER_SYSTEM),
@@ -190,8 +201,8 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
     }
 
 
-def object_avoidance_agent(proposed_action: dict, image_base64: str) -> dict:
-    """Checks whether a proposed action is safe given the current camera image.
+def object_avoidance_agent(proposed_action: dict, image_base64: str, perception: dict) -> dict:
+    """Checks whether a proposed action is safe given the current camera image and perception data.
 
     Skips the LLM check for non-movement actions (takeoff, land, hover) and
     approves them immediately.
@@ -210,6 +221,19 @@ def object_avoidance_agent(proposed_action: dict, image_base64: str) -> dict:
 
     print(f"[AVOIDANCE] Checking: {action_name} value={proposed_action.get('value')}")
 
+    # Build object list text from perception
+    all_items = perception.get("objects", []) + perception.get("obstacles", [])
+    if all_items:
+        obj_lines = []
+        for o in all_items:
+            label = o.get("type", "obstacle")
+            obj_lines.append(
+                f"  - {label} | h_angle={o.get('angle', 0)}° | v_angle={o.get('vertical_angle', 0)}° | dist={o.get('distance', 'unknown')}"
+            )
+        obj_text = "Detected objects/obstacles:\n" + "\n".join(obj_lines)
+    else:
+        obj_text = "Detected objects/obstacles: none"
+
     prompt = [
         SystemMessage(content=_AVOIDANCE_SYSTEM),
         HumanMessage(content=[
@@ -217,7 +241,8 @@ def object_avoidance_agent(proposed_action: dict, image_base64: str) -> dict:
             {"type": "text", "text": (
                 f"Proposed action: {action_name}\n"
                 f"Value: {proposed_action.get('value')}\n"
-                f"Reason: {proposed_action.get('reason', '')}"
+                f"Reason: {proposed_action.get('reason', '')}\n"
+                f"{obj_text}"
             )}
         ])
     ]

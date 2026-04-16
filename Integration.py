@@ -43,6 +43,7 @@ def _update_object_distances(object_memory: list, action: str, value_cm: int, cu
     """Adjust stored object distances after a movement action."""
     _FORWARD_ACTIONS  = {"move_forward": -1, "move_back": +1}
     _LATERAL_ACTIONS  = {"move_left": -1, "move_right": +1}  # -1 = drone moves left → right-side objects closer
+    _VERTICAL_ACTIONS = {"move_up": -1, "move_down": +1}     # -1 = drone moves up → objects above get closer
 
     for obj in object_memory:
         dist = _parse_cm(obj["distance"])
@@ -50,17 +51,27 @@ def _update_object_distances(object_memory: list, action: str, value_cm: int, cu
             continue
 
         rel_angle = (obj["abs_angle"] - current_heading) % 360
+        v_angle = obj.get("abs_vertical_angle", 0)
 
         if action in _FORWARD_ACTIONS:
-            # Only adjust objects roughly ahead (<45°) or behind (>315°)
             if rel_angle <= 45 or rel_angle >= 315:
                 dist += _FORWARD_ACTIONS[action] * value_cm
         elif action in _LATERAL_ACTIONS:
-            # Objects to the left (270°±45°) or right (90°±45°)
             if action == "move_left" and (225 <= rel_angle <= 315):
                 dist -= value_cm
             elif action == "move_right" and (45 <= rel_angle <= 135):
                 dist -= value_cm
+        elif action in _VERTICAL_ACTIONS:
+            if action == "move_up":
+                if v_angle >= 10:       # object above — getting closer
+                    dist -= value_cm
+                elif v_angle <= -10:    # object below — getting farther
+                    dist += value_cm
+            elif action == "move_down":
+                if v_angle <= -10:      # object below — getting closer
+                    dist -= value_cm
+                elif v_angle >= 10:     # object above — getting farther
+                    dist += value_cm
 
         obj["distance"] = f"{max(0, round(dist))}cm"
 
@@ -155,12 +166,18 @@ while not kill_switch.is_set():
                 existing = next((o for o in object_memory if o["type"] == obj_type and abs(o["abs_angle"] - abs_angle) <= 15), None)
                 if existing:
                     new_dist = obj.get("distance", "unknown")
-                    # Only overwrite if the new estimate is a real value
                     if new_dist != "unknown":
                         existing["distance"] = new_dist
+                    existing["abs_vertical_angle"] = obj.get("vertical_angle", 0)
                     existing["step"] = step
                 else:
-                    object_memory.append({"type": obj_type, "abs_angle": abs_angle, "distance": obj.get("distance", "unknown"), "step": step})
+                    object_memory.append({
+                        "type": obj_type,
+                        "abs_angle": abs_angle,
+                        "abs_vertical_angle": obj.get("vertical_angle", 0),
+                        "distance": obj.get("distance", "unknown"),
+                        "step": step,
+                    })
 
         # 5. Execute each action — avoidance agent checks safety before each move
         for action_item in result["actions"]:
@@ -172,7 +189,7 @@ while not kill_switch.is_set():
             stop_keepalive = Event()
             keepalive_thread = threading.Thread(target=_keepalive, args=(stop_keepalive,), daemon=True)
             keepalive_thread.start()
-            avoidance = object_avoidance_agent(action_item, fresh_image)
+            avoidance = object_avoidance_agent(action_item, fresh_image, result["perception"])
             stop_keepalive.set()
             keepalive_thread.join(timeout=2)
 
