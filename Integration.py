@@ -29,6 +29,42 @@ keyboard.add_hotkey("esc", _on_kill_switch)
 print("Kill switch active — press ESC at any time to land immediately.")
 
 
+def _parse_cm(distance_str: str):
+    """Parse a distance string like '150cm' to float. Returns None if unknown."""
+    if not distance_str or distance_str == "unknown":
+        return None
+    try:
+        return float(distance_str.lower().replace("cm", "").strip())
+    except ValueError:
+        return None
+
+
+def _update_object_distances(object_memory: list, action: str, value_cm: int, current_heading: int):
+    """Adjust stored object distances after a movement action."""
+    _FORWARD_ACTIONS  = {"move_forward": -1, "move_back": +1}
+    _LATERAL_ACTIONS  = {"move_left": -1, "move_right": +1}  # -1 = drone moves left → right-side objects closer
+
+    for obj in object_memory:
+        dist = _parse_cm(obj["distance"])
+        if dist is None:
+            continue
+
+        rel_angle = (obj["abs_angle"] - current_heading) % 360
+
+        if action in _FORWARD_ACTIONS:
+            # Only adjust objects roughly ahead (<45°) or behind (>315°)
+            if rel_angle <= 45 or rel_angle >= 315:
+                dist += _FORWARD_ACTIONS[action] * value_cm
+        elif action in _LATERAL_ACTIONS:
+            # Objects to the left (270°±45°) or right (90°±45°)
+            if action == "move_left" and (225 <= rel_angle <= 315):
+                dist -= value_cm
+            elif action == "move_right" and (45 <= rel_angle <= 135):
+                dist -= value_cm
+
+        obj["distance"] = f"{max(0, round(dist))}cm"
+
+
 def _keepalive(stop_event: Event):
     """Sends a no-op command every 10 s so the Tello doesn't auto-land."""
     while not stop_event.wait(10):
@@ -58,6 +94,8 @@ while not kill_switch.is_set():
     telemetry = {}
     step = 0
     last_call_time = 0.0
+    current_heading = 0        # degrees from mission start, based on executed rotations
+    object_memory = []         # persists detected objects across planning cycles
 
     # ── Inner loop: plan → execute sequence → re-plan until goal done ──────────
     while drone_active and not kill_switch.is_set():
@@ -81,12 +119,20 @@ while not kill_switch.is_set():
         keepalive_thread = threading.Thread(target=_keepalive, args=(stop_keepalive,), daemon=True)
         keepalive_thread.start()
         last_call_time = time.time()
-        result = vision_planner_agent(goal, image_b64, telemetry, history)
+        result = vision_planner_agent(goal, image_b64, telemetry, history, object_memory)
         stop_keepalive.set()
         keepalive_thread.join(timeout=2)
 
         print(f"\n[PLANNER] {len(result['actions'])} action(s) | "
               f"goal={result['goal_status']} | confidence={result['confidence']:.2f}")
+        if result["perception"]["objects"]:
+            for obj in result["perception"]["objects"]:
+                abs_ang = (current_heading + obj.get("angle", 0)) % 360
+                print(f"  [OBJ] {obj['type']} | {abs_ang}° | {obj['distance']}")
+        if result["perception"]["obstacles"]:
+            for obs in result["perception"]["obstacles"]:
+                abs_ang = (current_heading + obs.get("angle", 0)) % 360
+                print(f"  [OBS] obstacle | {abs_ang}° | {obs['distance']}")
 
         # 4. Goal already achieved or unsafe — stop
         if result["goal_status"] in ("completed", "abort"):
@@ -96,6 +142,25 @@ while not kill_switch.is_set():
                 print(f"[ABORT] {result['goal_reason']}")
             drone_active = False
             break
+
+        # 4b. Update object memory with newly detected objects/obstacles
+        seen_this_cycle = set()
+        for obj in result["perception"]["objects"] + result["perception"]["obstacles"]:
+            obj_type = obj.get("type") or "obstacle"
+            abs_angle = (current_heading + obj.get("angle", 0)) % 360
+            key = (obj_type, abs_angle)
+            if key not in seen_this_cycle:
+                seen_this_cycle.add(key)
+                # Update existing entry or add new one
+                existing = next((o for o in object_memory if o["type"] == obj_type and abs(o["abs_angle"] - abs_angle) <= 15), None)
+                if existing:
+                    new_dist = obj.get("distance", "unknown")
+                    # Only overwrite if the new estimate is a real value
+                    if new_dist != "unknown":
+                        existing["distance"] = new_dist
+                    existing["step"] = step
+                else:
+                    object_memory.append({"type": obj_type, "abs_angle": abs_angle, "distance": obj.get("distance", "unknown"), "step": step})
 
         # 5. Execute each action — avoidance agent checks safety before each move
         for action_item in result["actions"]:
@@ -112,8 +177,8 @@ while not kill_switch.is_set():
             keepalive_thread.join(timeout=2)
 
             if not avoidance["safe"]:
-                print(f"[AVOIDANCE] Skipping '{action_item['action']}': {avoidance['reason']}")
-                continue
+                print(f"[AVOIDANCE] Blocked '{action_item['action']}': {avoidance['reason']} — returning to planner")
+                break
 
             final_action = action_item["action"]
             final_value = int(action_item["value"]) if action_item.get("value") is not None else 0
@@ -125,8 +190,18 @@ while not kill_switch.is_set():
             history.append(final_action)
             step += 1
 
-        # 6. Sequence done — re-plan to check goal progress
-        print("[CYCLE] Sequence complete — re-planning...\n")
+            # Track heading based on executed rotations
+            if final_action == "rotate_clockwise":
+                current_heading = (current_heading + final_value) % 360
+            elif final_action == "rotate_counter_clockwise":
+                current_heading = (current_heading - final_value) % 360
+
+            # Update stored object distances based on movement
+            _update_object_distances(object_memory, final_action, final_value, current_heading)
+
+        # 6. Replan only if goal not yet met
+        if result["goal_status"] == "continue":
+            print("[CYCLE] Replanning...\n")
 
 sdk.ShutDown()
 print("\n===== Done =====")

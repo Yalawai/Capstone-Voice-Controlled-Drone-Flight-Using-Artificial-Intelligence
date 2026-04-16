@@ -12,12 +12,12 @@ load_dotenv()
 
 class ObjectItem(BaseModel):
     type: str
-    direction: Literal["left", "center", "right"]
-    distance: Literal["near", "medium", "far"]
+    angle: int      # relative angle from drone forward direction, negative=left, positive=right, range -41 to +41
+    distance: str   # estimated distance in cm e.g. "150cm", or "unknown"
 
 class ObstacleItem(BaseModel):
-    direction: Literal["left", "center", "right"]
-    distance: Literal["near", "medium", "far"]
+    angle: int      # relative angle from drone forward direction, negative=left, positive=right, range -41 to +41
+    distance: str   # estimated distance in cm e.g. "150cm", or "unknown"
 
 _ACTION_LITERAL = Literal[
     "takeoff", "land", "hover",
@@ -68,19 +68,27 @@ Analyze the camera image and complete all three tasks in one pass:
 
 PERCEPTION:
 - Report only clearly visible objects/obstacles. Do NOT hallucinate.
-- direction: left/center/right (image thirds). distance: near/medium/far.
+- angle: relative angle in degrees from the drone's forward direction. Negative = left, positive = right. Range -41 to +41 (matches the camera's ~82° FOV). e.g. dead center = 0, far left edge = -41, far right edge = 41.
+- distance: estimate in centimeters based on the object's known real-world size and how much of the frame it fills. Return as e.g. "150cm". If you cannot estimate, return "unknown".
 
-PLANNING — return an ordered sequence of 1-5 actions:
+DISTANCE ESTIMATION GUIDE (Tello camera ~82° FOV):
+- Use the object's known real size vs apparent frame coverage to estimate depth.
+- Reference sizes: person ~170cm tall, chair ~80cm tall, door ~200cm tall, table ~75cm tall, wall fills full frame edge-to-edge.
+- If an object fills ~100% of frame height → ~20-30cm. ~50% → ~80-120cm. ~25% → ~180-250cm. ~10% → ~400-600cm. ~5% → ~800cm+.
+- Cross-check with object type: e.g. a person at 25% frame height ≈ 170/(0.25*tan(41°)*2) ≈ ~200cm.
+- Always return distance in cm as a string like "200cm". Use "unknown" only if the object type gives no size reference.
+
+PLANNING — return an ordered sequence of 1-10 actions:
+- Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°), tracked via accumulated rotations. Use this to reason about where previously seen objects are relative to the drone's current heading.
 - Each action must be safe and progress toward the goal.
 - Keep movements small: 20-50 cm for distance, 20-90 degrees for rotation.
 - value is required for movement/rotation actions, null for takeoff/land/hover.
-- If the drone has not taken off yet, the first action must be "takeoff".
+- Do NOT use "takeoff" — the drone is already airborne when planning begins.
 
 GOAL CHECK:
 - goal_status "completed": the goal is fully achieved — stop planning movement.
 - goal_status "abort": situation is unsafe or goal is impossible.
 - goal_status "continue": more steps needed.
-- Be conservative: high risk_level → abort.
 
 Output must match the schema exactly. No extra text."""
 
@@ -93,17 +101,17 @@ DISTANCE ESTIMATION GUIDE — use these visual cues:
 
 1. FRAME COVERAGE: If an object or surface fills more than 50% of the frame width or height, it is likely within 30 cm. If it fills 25–50%, it is roughly 30–60 cm away. Less than 25% means it is likely further than 60 cm.
 
-2. TEXTURE DETAIL: Surfaces very close (under 30 cm) show extreme texture detail — individual fibres, grain, pores, or paint texture are clearly visible. Distant surfaces look smoother and less detailed.
+2. TEXTURE DETAIL: Surfaces very close (under 20 cm) show extreme texture detail — individual fibres, grain, pores, or paint texture are clearly visible. Distant surfaces look smoother and less detailed.
 
 3. EDGE SHARPNESS: A nearby object has sharp, high-contrast edges that dominate the frame. A far object has softer edges and blends more into the background.
 
-4. OBJECT SIZE: Common reference objects — a wall takes up the entire frame at under 30 cm. A doorframe would appear very wide. A person's face would fill most of the frame.
+4. OBJECT SIZE: Common reference objects — a wall takes up the entire frame at under 20 cm. A doorframe would appear very wide. A person's face would fill most of the frame.
 
 5. DEPTH OF FIELD: Objects extremely close may appear slightly soft/blurred at the edges due to the camera's focus limit.
 
 RULES:
 - safe=false ONLY if your visual analysis concludes an obstacle is 30 cm or closer in the direction of the proposed action.
-- safe=true if all obstacles appear further than 30 cm away.
+- safe=true if all obstacles appear further than 20 cm away.
 - Only consider obstacles in the direction of the proposed action (e.g. for move_forward, only check what is directly ahead).
 - Think through the visual cues step by step in your reason field before deciding.
 
@@ -118,7 +126,7 @@ _MOVEMENT_ACTIONS = frozenset({
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history: list) -> dict:
+def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history: list, object_memory: list) -> dict:
     """Perceives the environment, plans a sequence of actions, and checks goal status.
 
     Returns:
@@ -133,6 +141,12 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
     """
     print("[PLANNER] Sending to LLM...")
 
+    memory_text = ""
+    if object_memory:
+        memory_text = "\nPreviously seen objects (type | abs_angle_from_origin | distance | step_seen):\n"
+        for obj in object_memory:
+            memory_text += f"  - {obj['type']} | {obj['abs_angle']}° | {obj['distance']} | step {obj['step']}\n"
+
     prompt = [
         SystemMessage(content=_PLANNER_SYSTEM),
         HumanMessage(content=[
@@ -141,6 +155,7 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
                 f"Goal: {goal}\n"
                 f"Telemetry: {json.dumps(telemetry)}\n"
                 f"History (last 10): {list(history)}"
+                f"{memory_text}"
             )}
         ])
     ]
