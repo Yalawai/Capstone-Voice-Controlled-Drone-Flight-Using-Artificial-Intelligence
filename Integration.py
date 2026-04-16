@@ -7,7 +7,7 @@ import keyboard
 
 from tello_sdk_controls_dir.main import SDK
 from whisper_cpp.main import main as get_voice_command
-from vision_action_controller_dir.main import vision_planner_agent, object_avoidance_agent
+from vision_action_controller_dir.main import vision_planner_agent
 
 # ── SDK ────────────────────────────────────────────────────────────────────────
 sdk = SDK()
@@ -162,23 +162,8 @@ while not kill_switch.is_set():
                 else:
                     object_memory.append({"type": obj_type, "abs_angle": abs_angle, "distance": obj.get("distance", "unknown"), "step": step})
 
-        # 5. Execute each action — avoidance agent checks safety before each move
+        # 5. Execute each action
         for action_item in result["actions"]:
-
-            # Fresh image for avoidance check
-            fresh_image = sdk.TakePicture() or image_b64
-
-            # Avoidance agent — wait for response before moving
-            stop_keepalive = Event()
-            keepalive_thread = threading.Thread(target=_keepalive, args=(stop_keepalive,), daemon=True)
-            keepalive_thread.start()
-            avoidance = object_avoidance_agent(action_item, fresh_image)
-            stop_keepalive.set()
-            keepalive_thread.join(timeout=2)
-
-            if not avoidance["safe"]:
-                print(f"[AVOIDANCE] Blocked '{action_item['action']}': {avoidance['reason']} — returning to planner")
-                break
 
             final_action = action_item["action"]
             final_value = int(action_item["value"]) if action_item.get("value") is not None else 0

@@ -47,17 +47,9 @@ class PlannerOutput(BaseModel):
     message_to_user: Optional[str] = None
 
 
-# ── Avoidance output ───────────────────────────────────────────────────────────
-
-class AvoidanceOutput(BaseModel):
-    safe: bool      # True = safe to execute, False = skip this action
-    reason: str
-
-
 # ── LLMs ──────────────────────────────────────────────────────────────────────
 
 _planner_llm  = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0).with_structured_output(PlannerOutput)
-_avoidance_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, thinking_budget=512).with_structured_output(AvoidanceOutput)
 
 
 # ── System prompts ─────────────────────────────────────────────────────────────
@@ -78,7 +70,7 @@ DISTANCE ESTIMATION GUIDE (Tello camera ~82° FOV):
 - Cross-check with object type: e.g. a person at 25% frame height ≈ 170/(0.25*tan(41°)*2) ≈ ~200cm.
 - Always return distance in cm as a string like "200cm". Use "unknown" only if the object type gives no size reference.
 
-PLANNING — return an ordered sequence of 1-10 actions:
+PLANNING — return an ordered sequence of 1-4 actions:
 - Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°), tracked via accumulated rotations. Use this to reason about where previously seen objects are relative to the drone's current heading.
 - Each action must be safe and progress toward the goal.
 - Keep movements small: 20-50 cm for distance, 20-90 degrees for rotation.
@@ -92,39 +84,6 @@ GOAL CHECK:
 
 Output must match the schema exactly. No extra text."""
 
-_AVOIDANCE_SYSTEM = """You are the obstacle avoidance safety system of an autonomous drone with a forward-facing camera.
-
-You receive the current camera image and a proposed action.
-Your job: decide if an obstacle is within 20 cm of the drone in the direction of the proposed action.
-
-DEFAULT TO safe=true. Only return safe=false if you are highly confident an obstacle is within 20 cm.
-
-DISTANCE ESTIMATION — visual cues for the direction of travel only:
-
-1. FRAME COVERAGE: A surface filling >80% of frame width AND height is likely within 20 cm. 50–80% → ~20–50 cm (likely safe). Under 50% → safe.
-
-2. TEXTURE DETAIL: Under 20 cm you can see individual fibres, grain, or pores clearly. Moderate detail = 20–50 cm. Smooth/blurry = far away.
-
-3. OBJECT SIZE REFERENCE: Wall fills entire frame only at ~10–15 cm. A person's torso filling full frame height ≈ 15 cm. At 50 cm a person fills ~30% of frame height.
-
-4. Only consider what is directly in the path of the action:
-   - move_forward / move_back: centre of frame
-   - move_left / move_right: left or right side of frame respectively
-   - move_up / move_down: top or bottom of frame respectively
-   - Ignore objects that are clearly to the side and not in the path.
-
-RULES:
-- safe=false ONLY if you are highly confident an obstacle is 20 cm or closer in the direction of travel.
-- If uncertain, return safe=true.
-- Explain your visual reasoning in the reason field.
-
-Output must match the schema exactly. No extra text."""
-
-# Movement actions that require a valid value
-_MOVEMENT_ACTIONS = frozenset({
-    "move_forward", "move_back", "move_left", "move_right",
-    "move_up", "move_down", "rotate_clockwise", "rotate_counter_clockwise"
-})
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
@@ -190,42 +149,3 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
     }
 
 
-def object_avoidance_agent(proposed_action: dict, image_base64: str) -> dict:
-    """Checks whether a proposed action is safe given the current camera image.
-
-    Skips the LLM check for non-movement actions (takeoff, land, hover) and
-    approves them immediately.
-
-    Returns AvoidanceOutput as a dict:
-        { "safe": bool, "reason": str }
-    """
-    action_name = proposed_action["action"]
-
-    # Non-movement actions don't need obstacle checking
-    if action_name not in _MOVEMENT_ACTIONS:
-        return {
-            "safe": True,
-            "reason": "non-movement action, no avoidance check needed"
-        }
-
-    print(f"[AVOIDANCE] Checking: {action_name} value={proposed_action.get('value')}")
-
-    prompt = [
-        SystemMessage(content=_AVOIDANCE_SYSTEM),
-        HumanMessage(content=[
-            {"type": "image", "base64": image_base64, "mime_type": "image/jpg"},
-            {"type": "text", "text": (
-                f"Proposed action: {action_name}\n"
-                f"Value: {proposed_action.get('value')}\n"
-                f"Reason: {proposed_action.get('reason', '')}"
-            )}
-        ])
-    ]
-
-    try:
-        result = _avoidance_llm.invoke(prompt)
-        print(f"[AVOIDANCE] {'SAFE' if result.safe else 'UNSAFE'}: {result.reason}")
-        return result.model_dump()
-    except Exception as e:
-        print("[AVOIDANCE] Failed, blocking for safety:", e)
-        return {"safe": False, "reason": f"avoidance check error: {e}"}
