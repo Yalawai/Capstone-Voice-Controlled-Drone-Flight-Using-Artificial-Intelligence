@@ -12,8 +12,6 @@ from vision_action_controller_dir.main import vision_planner_agent, object_avoid
 # ── SDK ────────────────────────────────────────────────────────────────────────
 sdk = SDK()
 
-MIN_CALL_INTERVAL = 1  # minimum seconds between LLM calls
-
 # ── Kill switch ────────────────────────────────────────────────────────────────
 kill_switch = Event()
 
@@ -104,7 +102,6 @@ while not kill_switch.is_set():
     history = deque(maxlen=10)
     telemetry = {}
     step = 0
-    last_call_time = 0.0
     current_heading = 0        # degrees from mission start, based on executed rotations
     object_memory = []         # persists detected objects across planning cycles
 
@@ -120,16 +117,10 @@ while not kill_switch.is_set():
 
         telemetry = sdk.DroneSystemInformation() or telemetry
 
-        # 2. Rate-limit LLM calls
-        elapsed = time.time() - last_call_time
-        if elapsed < MIN_CALL_INTERVAL:
-            time.sleep(MIN_CALL_INTERVAL - elapsed)
-
         # 3. Planner: perceive + plan action sequence + check goal
         stop_keepalive = Event()
         keepalive_thread = threading.Thread(target=_keepalive, args=(stop_keepalive,), daemon=True)
         keepalive_thread.start()
-        last_call_time = time.time()
         result = vision_planner_agent(goal, image_b64, telemetry, history, object_memory)
         stop_keepalive.set()
         keepalive_thread.join(timeout=2)
@@ -181,6 +172,8 @@ while not kill_switch.is_set():
 
         # 5. Execute each action — avoidance agent checks safety before each move
         for action_item in result["actions"]:
+
+            time.sleep(1)
 
             # Fresh image for avoidance check
             fresh_image = sdk.TakePicture() or image_b64

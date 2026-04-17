@@ -70,8 +70,10 @@ Analyze the camera image and complete all three tasks in one pass:
 
 PERCEPTION:
 - Report only clearly visible objects/obstacles. Do NOT hallucinate.
-- angle: horizontal relative angle in degrees from the drone's forward direction. Negative = left, positive = right. Range -41 to +41 (matches the camera's ~82° horizontal FOV). e.g. dead center = 0, far left edge = -41, far right edge = 41.
-- vertical_angle: vertical relative angle in degrees. Negative = below center, positive = above center. Range -30 to +30 (matches ~60° vertical FOV). e.g. level with drone = 0, top edge = +30, bottom edge = -30.
+- angle: horizontal relative angle in degrees from the drone's forward direction. 
+  Negative = left, positive = right. Range -41 to +41 (matches the camera's ~82° horizontal FOV). e.g. dead center = 0, far left edge = -41, far right edge = 41.
+- vertical_angle: vertical relative angle in degrees. Negative = below center, 
+  positive = above center. Range -30 to +30 (matches ~60° vertical FOV). e.g. level with drone = 0, top edge = +30, bottom edge = -30.
 - distance: estimate in centimeters based on the object's known real-world size and how much of the frame it fills. Return as e.g. "150cm". If you cannot estimate, return "unknown".
 
 DISTANCE ESTIMATION GUIDE (Tello camera ~82° FOV):
@@ -82,7 +84,8 @@ DISTANCE ESTIMATION GUIDE (Tello camera ~82° FOV):
 - Always return distance in cm as a string like "200cm". Use "unknown" only if the object type gives no size reference.
 
 PLANNING — return an ordered sequence of 1-10 actions:
-- Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°), tracked via accumulated rotations. Use this to reason about where previously seen objects are relative to the drone's current heading.
+- Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°), 
+  tracked via accumulated rotations. Use this to reason about where previously seen objects are relative to the drone's current heading.
 - Each action must be safe and progress toward the goal.
 - Keep movements small: 20-50 cm for distance, 20-90 degrees for rotation.
 - value is required for movement/rotation actions, null for takeoff/land/hover.
