@@ -59,7 +59,7 @@ class AvoidanceOutput(BaseModel):
 # ── LLMs ──────────────────────────────────────────────────────────────────────
 
 _planner_llm  = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0).with_structured_output(PlannerOutput)
-_avoidance_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, thinking_budget=0).with_structured_output(AvoidanceOutput)
+_avoidance_llm = ChatGoogleGenerativeAI(model="gemini-3-flash", temperature=0, thinking_budget=0).with_structured_output(AvoidanceOutput)
 
 
 # ── System prompts ─────────────────────────────────────────────────────────────
