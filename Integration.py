@@ -104,6 +104,7 @@ while not kill_switch.is_set():
     step = 0
     current_heading = 0        # degrees from mission start, based on executed rotations
     object_memory = []         # persists detected objects across planning cycles
+    area_description = ""      # running environment description, updated each cycle
 
     # ── Inner loop: plan → execute sequence → re-plan until goal done ──────────
     while drone_active and not kill_switch.is_set():
@@ -121,12 +122,16 @@ while not kill_switch.is_set():
         stop_keepalive = Event()
         keepalive_thread = threading.Thread(target=_keepalive, args=(stop_keepalive,), daemon=True)
         keepalive_thread.start()
-        result = vision_planner_agent(goal, image_b64, telemetry, history, object_memory)
+        result = vision_planner_agent(goal, image_b64, telemetry, history, object_memory, area_description)
         stop_keepalive.set()
         keepalive_thread.join(timeout=2)
 
+        area_description = result.get("area_description", area_description)
+
         print(f"\n[PLANNER] {len(result['actions'])} action(s) | "
               f"goal={result['goal_status']} | confidence={result['confidence']:.2f}")
+        if area_description:
+            print(f"  [AREA] {area_description}")
         if result["perception"]["objects"]:
             for obj in result["perception"]["objects"]:
                 abs_ang = (current_heading + obj.get("angle", 0)) % 360

@@ -46,6 +46,7 @@ class PlannerOutput(BaseModel):
     confidence: float
     goal_status: Literal["continue", "completed", "abort"]
     goal_reason: str
+    area_description: str           # running description of the environment, updated each cycle
     message_to_user: Optional[str] = None
 
 
@@ -99,6 +100,12 @@ PLANNING — return an ordered sequence of 1-10 actions:
 - value is required for movement/rotation actions, null for takeoff/land/hover.
 - Do NOT use "takeoff" — the drone is already airborne when planning begins.
 
+AREA DESCRIPTION:
+- You will receive the current area_description built up from previous cycles (empty on first cycle).
+- Each cycle, update it with anything new you observe — layout, room type, notable landmarks, open spaces, dead ends.
+- Keep it concise (2-4 sentences max). Preserve useful prior information and correct anything that was wrong.
+- Example: "Indoor office room. Desk and chair on the right side. Window on the far wall straight ahead. Open corridor to the left."
+
 GOAL CHECK:
 - goal_status "completed": the goal is fully achieved — stop planning movement.
 - goal_status "abort": situation is unsafe or goal is impossible.
@@ -148,7 +155,7 @@ _MOVEMENT_ACTIONS = frozenset({
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history: list, object_memory: list) -> dict:
+def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history: list, object_memory: list, area_description: str = "") -> dict:
     """Perceives the environment, plans a sequence of actions, and checks goal status.
 
     Returns:
@@ -179,7 +186,8 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
             {"type": "text", "text": (
                 f"Goal: {goal}\n"
                 f"Telemetry: {json.dumps(telemetry)}\n"
-                f"History (last 10): {list(history)}"
+                f"History (last 10): {list(history)}\n"
+                f"Current area description: {area_description if area_description else 'none yet — first cycle'}"
                 f"{memory_text}"
             )}
         ])
@@ -198,7 +206,8 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
             environment="unknown", risk_level="high",
             actions=[ActionItem(action="hover", reason="fallback — planner error")],
             confidence=0.0,
-            goal_status="continue", goal_reason="fallback — planner error"
+            goal_status="continue", goal_reason="fallback — planner error",
+            area_description=area_description
         )
 
     d = result.model_dump()
@@ -208,6 +217,7 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
         "confidence": d["confidence"],
         "goal_status": d["goal_status"],
         "goal_reason": d["goal_reason"],
+        "area_description": d["area_description"],
         "message_to_user": d.get("message_to_user"),
     }
 
