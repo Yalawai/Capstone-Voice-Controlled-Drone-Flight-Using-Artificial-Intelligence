@@ -75,8 +75,8 @@ def _update_object_distances(object_memory: list, action: str, value_cm: int, cu
 
 
 def _keepalive(stop_event: Event):
-    """Sends a no-op command every 10 s so the Tello doesn't auto-land."""
-    while not stop_event.wait(10):
+    """Sends a no-op command every 5 s so the Tello doesn't auto-land."""
+    while not stop_event.wait(5):
         sdk.tello.send_command_without_return("command")
 
 
