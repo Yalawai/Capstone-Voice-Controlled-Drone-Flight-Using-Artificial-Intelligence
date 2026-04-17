@@ -83,8 +83,16 @@ DISTANCE ESTIMATION GUIDE (Tello camera ~82° FOV):
 - Cross-check with object type: e.g. a person at 25% frame height ≈ 170/(0.25*tan(41°)*2) ≈ ~200cm.
 - Always return distance in cm as a string like "200cm". Use "unknown" only if the object type gives no size reference.
 
+TELEMETRY FIELDS (provided each cycle):
+- h: current altitude in cm (barometric)
+- bat: battery percentage
+- yaw: heading in degrees relative to takeoff orientation
+- pitch / roll: attitude in degrees
+- vgx / vgy / vgz: velocity in cm/s (x=forward, y=lateral, z=vertical)
+- templ / temph: motor temperature low/high °C
+
 PLANNING — return an ordered sequence of 1-10 actions:
-- Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°), 
+- Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°),
   tracked via accumulated rotations. Use this to reason about where previously seen objects are relative to the drone's current heading.
 - Each action must be safe and progress toward the goal.
 - Keep movements small: 20-50 cm for distance, 20-90 degrees for rotation.
