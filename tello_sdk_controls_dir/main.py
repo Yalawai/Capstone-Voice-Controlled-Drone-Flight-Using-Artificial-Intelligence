@@ -1,3 +1,4 @@
+import numpy as np
 from djitellopy import Tello
 import time
 import cv2
@@ -37,7 +38,15 @@ class SDK:
     def TakePicture(self):
         try:
             frame = self.frame_read.frame
-            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
+            frame = cv2.resize(frame, (640, 480))
+            frame = cv2.convertScaleAbs(frame, alpha=1.15, beta=15)
+            kernel = np.array([
+                [0, -1, 0],
+                [-1, 5, -1],
+                [0, -1, 0]
+            ])
+            frame = cv2.filter2D(frame, -1, kernel)
+            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
             image_b64 = base64.b64encode(buffer).decode('utf-8')
             print("Picture Captured")
             return image_b64
