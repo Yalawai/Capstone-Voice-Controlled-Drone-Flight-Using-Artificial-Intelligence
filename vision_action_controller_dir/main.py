@@ -96,9 +96,12 @@ PLANNING — return an ordered sequence of 1-10 actions:
 - Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°),
   tracked via accumulated rotations. Use this to reason about where previously seen objects are relative to the drone's current heading.
 - Each action must be safe and progress toward the goal.
-- Keep movements small: 20-50 cm for distance, 20-90 degrees for rotation.
+- Keep movements small unless confident with large space: 20-100 cm for distance, 20-90 degrees for rotation.
 - value is required for movement/rotation actions, null for takeoff/land/hover.
 - Do NOT use "takeoff" — the drone is already airborne when planning begins.
+- When asked to find a object make sure the crosshair is aligned horizontally with the object the closer you are from looking at the object rotate slower before moving to it make sure the center of the crosshair is on the target before doing anything else.
+- Make sure if there is a obstacle close to you make sure you move away from it before doing anything else
+- if you can't see what your looking for make sure to spin only and not move.
 
 AREA DESCRIPTION:
 - You will receive the current area_description built up from previous cycles (empty on first cycle).

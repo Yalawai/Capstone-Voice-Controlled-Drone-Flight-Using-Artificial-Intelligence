@@ -38,15 +38,21 @@ class SDK:
     def TakePicture(self):
         try:
             frame = self.frame_read.frame
-            frame = cv2.resize(frame, (640, 480))
-            frame = cv2.convertScaleAbs(frame, alpha=1.15, beta=15)
+            frame = cv2.convertScaleAbs(frame, alpha=1.15, beta=10)
             kernel = np.array([
                 [0, -1, 0],
                 [-1, 5, -1],
                 [0, -1, 0]
             ])
             frame = cv2.filter2D(frame, -1, kernel)
-            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, _ = frame.shape
+            center_x = w // 2
+            center_y = h // 2
+            cv2.line(frame, (center_x, 0), (center_x, h), (0, 255, 0), 2)
+            cv2.line(frame, (0, center_y), (w, center_y), (0, 255, 0), 2)
+            cv2.imwrite("debug.jpg", frame)
+            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
             image_b64 = base64.b64encode(buffer).decode('utf-8')
             print("Picture Captured")
             return image_b64
