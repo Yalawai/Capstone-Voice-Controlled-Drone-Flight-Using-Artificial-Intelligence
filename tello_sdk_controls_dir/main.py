@@ -1,10 +1,8 @@
+import numpy as np
 from djitellopy import Tello
 import time
 import cv2
-import re
 import base64
-
-from sentry_sdk.utils import single_exception_from_error_tuple
 
 
 class SDK:
@@ -20,70 +18,96 @@ class SDK:
         except:
             print("drone Not connected")
 
-
-
-    def emergency_kill(self):
-        try:
-            print("Emergency Kill")
-            self.tello.emergency()
-        except Exception as e:
-            print("Emergency Kill Failed", e)
-
-    # Drone System Diagnostics
     def DroneSystemInformation(self):
         try:
-            return self.tello.get_current_state()
+            self.tello.send_command_without_return("command")
+            state = self.tello.get_current_state()
+            if state:
+                print(
+                    f"[TELEMETRY] "
+                    f"Batt: {state.get('bat', '?')}% | "
+                    f"Alt: {state.get('h', '?')}cm | "
+                    f"Temp: {state.get('templ', '?')}-{state.get('temph', '?')}°C | "
+                    f"Pitch: {state.get('pitch', '?')} Roll: {state.get('roll', '?')} Yaw: {state.get('yaw', '?')}"
+                )
+            return state
         except Exception as e:
-            print("Drone System Diagnostics Failed", e)
+            print("[TELEMETRY] failed:", e)
             return None
 
-
-    #This take a picture and saves it
     def TakePicture(self):
         try:
             frame = self.frame_read.frame
-            # Convert BGR → RGB (optional but better for vision models)
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            # Encode once here
-            _, buffer = cv2.imencode('.jpg', frame_rgb)
-            print("Turn into jpg")
+            frame = cv2.convertScaleAbs(frame, alpha=1.15, beta=10)
+            kernel = np.array([
+                [0, -1, 0],
+                [-1, 5, -1],
+                [0, -1, 0]
+            ])
+            frame = cv2.filter2D(frame, -1, kernel)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, _ = frame.shape
+            center_x = w // 2
+            center_y = h // 2
+            cv2.line(frame, (center_x, 0), (center_x, h), (0, 255, 0), 2)
+            cv2.line(frame, (0, center_y), (w, center_y), (0, 255, 0), 2)
+            cv2.imwrite("debug.jpg", frame)
+            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
             image_b64 = base64.b64encode(buffer).decode('utf-8')
-            print("decoded to b64")
             print("Picture Captured")
             return image_b64
         except Exception as e:
             print("Camera Failed ", e)
             return None
 
+    def DroneFlightController(self, action, numbers):
+        _MOVEMENT_ACTIONS = {
+            "move_forward", "move_back", "move_left", "move_right",
+            "move_up", "move_down", "rotate_clockwise", "rotate_counter_clockwise"
+        }
+        if action in _MOVEMENT_ACTIONS:
+            if numbers < 20:
+                print(f"[SDK] Skipping {action}: value {numbers} is below minimum 20")
+                return
+            if numbers > 500:
+                numbers = 500
+                print(f"[SDK] Clamped {action} value to 500")
 
-
-    def DroneFlightController(self, action_dict):
         try:
-            action = action_dict.get('action','UNKNOWN')
-            numbers = action_dict.get('value',None)
-
             if action == "takeoff":
                 self.tello.takeoff()
                 print("takeoff")
             elif action == "land":
                 self.tello.land()
                 print("land")
-            elif action == "up":
+            elif action == "move_up":
                 self.tello.move_up(numbers)
-            elif action == "down":
+                print("move_up", numbers)
+            elif action == "move_down":
                 self.tello.move_down(numbers)
-            elif action == "left":
+                print("move_down", numbers)
+            elif action == "move_forward":
+                self.tello.move_forward(numbers)
+                print("move_forward", numbers)
+            elif action == "move_back":
+                self.tello.move_back(numbers)
+                print("move_back", numbers)
+            elif action == "move_left":
                 self.tello.move_left(numbers)
-            elif action == "right":
+                print("move_left", numbers)
+            elif action == "move_right":
                 self.tello.move_right(numbers)
-            elif action == "rotateclockwise":
+                print("move_right", numbers)
+            elif action == "rotate_clockwise":
                 self.tello.rotate_clockwise(numbers)
-            elif action == "rotatecounterclockwise":
+                print("rotate_clockwise", numbers)
+            elif action == "rotate_counter_clockwise":
                 self.tello.rotate_counter_clockwise(numbers)
-            elif action == "motoroff":
-                self.tello.turn_motor_off()
+                print("rotate_counter_clockwise", numbers)
+            elif action == "hover":
+                print("hover")
             else:
-                print(action)
+                print(f"[SDK] Unknown action: {action}")
         except Exception as e:
             print("Drone Flight Controller Failed", e)
 
@@ -93,4 +117,3 @@ class SDK:
             self.tello.end()
         except Exception as e:
             print("Shutdown Failed", e)
-
