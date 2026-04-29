@@ -25,7 +25,8 @@ _ACTION_LITERAL = Literal[
     "takeoff", "land", "hover",
     "move_forward", "move_back", "move_left", "move_right",
     "move_up", "move_down",
-    "rotate_clockwise", "rotate_counter_clockwise"
+    "rotate_clockwise", "rotate_counter_clockwise",
+    "api_check"
 ]
 
 class ActionItem(BaseModel):
@@ -112,16 +113,28 @@ PLAN DECISION — choose "keep" or "replace":
   - goal_status changes to "completed" or "abort".
 - On the very first cycle (no current plan provided), always emit "replace".
 
-PLANNING — when plan_decision == "replace", return an ordered sequence of 3-10 actions:
+PLANNING — when plan_decision == "replace", return an ordered sequence of 1-10 actions:
 - Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°),
   tracked via accumulated rotations. Use this to reason about where previously seen objects are relative to the drone's current heading.
 - Each action must be safe and progress toward the goal.
 - Keep movements small unless confident with large space: 20-200 cm for distance, 20-90 degrees for rotation.
-- value is required for movement/rotation actions, null for takeoff/land/hover.
+- value is required for movement/rotation actions, null for takeoff/land/hover/api_check.
 - Do NOT use "takeoff" — the drone is already airborne when planning begins.
 - When asked to find a object make sure the crosshair is aligned horizontally with the object the closer you are from looking at the object rotate slower before moving to it make sure the center of the crosshair is on the target before doing anything else.
 - ALWAYS run collision detection before adding any movement action — never plan a move into an obstacle.
 - if you can't see what your looking for make sure to spin only and not move.
+
+API_CHECK — insert "api_check" actions at points where you want fresh perception before continuing:
+- "api_check" tells the executor to pause and wait for the next planner cycle before proceeding to the following action.
+- Each api_check costs one extra perception call, so use it ONLY at real decision points — not before every action.
+- Insert one when the next action's safety or correctness depends on something that will have changed by the time it runs:
+  - After a rotation that's meant to line the crosshair up on a target, before moving toward it.
+  - Before a close-range maneuver where alignment or obstacle distance matters.
+  - After a movement that significantly changes what's visible (e.g., turning a corner, descending).
+  - Before the final approach to a goal target.
+- Do NOT insert api_check between two movements that are clearly safe and independent (e.g., two long forward moves through open space).
+- value must be null for api_check.
+- Example plan: [rotate_clockwise 5, api_check, move_forward 50, move_forward 50] — rotate to align, recheck, then commit to two forward steps.
 
 AREA DESCRIPTION:
 - You will receive the current area_description built up from previous cycles (empty on first cycle).

@@ -81,17 +81,6 @@ def _keepalive(stop_event: Event):
         sdk.tello.send_command_without_return("command")
 
 
-# Keywords in an action's reason that flag it as needing a fresh plan before execution
-_SENSITIVE_KEYWORDS = {"align", "crosshair", "collision", "avoid", "obstacle", "close", "line up", "lineup"}
-
-def _needs_fresh_plan(action_item: dict, risk_level: str) -> bool:
-    """Return True if this action requires waiting for a brand-new planner response."""
-    if risk_level == "high":
-        return True
-    reason = action_item.get("reason", "").lower()
-    return any(kw in reason for kw in _SENSITIVE_KEYWORDS)
-
-
 # ── Outer loop: one voice command = one goal run ───────────────────────────────
 print("\n===== Drone Control Ready =====")
 
@@ -108,7 +97,6 @@ while not kill_switch.is_set():
 
     print(f"\n[GOAL] {goal}")
     sdk.DroneFlightController("takeoff", 0)
-
     # ── Per-mission shared state (executor thread owns writes) ─────────────
     state_lock = Lock()
     mission = {
@@ -240,7 +228,6 @@ while not kill_switch.is_set():
     last_exec_seq = -1
     action_idx = 0
     risk_level = "low"
-    just_refreshed_for_sensitive = False
 
     # ── Executor loop: planner emits keep/replace decisions; executor honours them ─
     while drone_active and not kill_switch.is_set():
@@ -293,13 +280,11 @@ while not kill_switch.is_set():
 
         action_item = current_plan["actions"][action_idx]
 
-        # 3. Sensitive action — block for a brand-new planner response, then loop
-        #    back to the top so the freshest plan is applied in place.
-        #    Skip this check if we already fetched a fresh plan for this action
-        #    to avoid looping forever when the new plan also has sensitive keywords.
-        if _needs_fresh_plan(action_item, risk_level) and not just_refreshed_for_sensitive:
-            print(f"[EXECUTOR] '{action_item['action']}' is sensitive (risk={risk_level}) — "
-                  f"waiting for fresh plan before executing...")
+        # 3. api_check — block for one fresh planner cycle, then advance past it.
+        #    The next loop iteration will pick up the new plan; if it's a "replace"
+        #    that resets action_idx, otherwise we just continue with the next action.
+        if action_item["action"] == "api_check":
+            print(f"[EXECUTOR] api_check at step {action_idx + 1} — waiting for fresh plan...")
             with plan_lock:
                 seq_before = plan_seq[0]
             plan_event.clear()
@@ -309,12 +294,10 @@ while not kill_switch.is_set():
             if not got or fresh_seq == seq_before:
                 print("[EXECUTOR] Timeout waiting for fresh plan — hovering")
                 sdk.DroneFlightController("hover", 0)
-            else:
-                just_refreshed_for_sensitive = True
-            # Loop back; top of loop will pull in the fresh plan and update in place.
+            action_idx += 1
+            with state_lock:
+                mission["action_idx"] = action_idx
             continue
-
-        just_refreshed_for_sensitive = False
 
         # 4. Execute the action
         time.sleep(1)
