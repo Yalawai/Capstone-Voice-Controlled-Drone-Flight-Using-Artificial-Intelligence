@@ -42,7 +42,8 @@ class PlannerOutput(BaseModel):
     free_space: List[Literal["left", "center", "right"]]
     environment: Literal["indoor", "outdoor", "unknown"]
     risk_level: Literal["low", "medium", "high"]
-    actions: List[ActionItem]       # ordered sequence of 1-5 actions
+    plan_decision: Literal["keep", "replace"]   # keep current in-flight plan, or replace it with `actions`
+    actions: List[ActionItem]       # ordered sequence of 3-10 actions; ignored when plan_decision == "keep"
     confidence: float
     goal_status: Literal["continue", "completed", "abort"]
     goal_reason: str
@@ -99,7 +100,19 @@ COLLISION DETECTION — check this before planning any movement:
 - If obstacles block all forward paths, prioritize moving up, back, or rotating to find a clear direction.
 - Set risk_level to "high" if any obstacle is within 80cm, "medium" if within 150cm, "low" otherwise.
 
-PLANNING — return an ordered sequence of 3-10 actions:
+PLAN DECISION — choose "keep" or "replace":
+- You will be given the current in-flight plan (the actions the executor is working through) plus which action is up NEXT.
+- "keep": the pending actions of the current plan are still safe and still progress toward the goal. Set actions=[] (it will be ignored).
+- "replace": the situation has changed enough that the pending actions are no longer optimal — provide a fresh action list.
+- Default to "keep" when the prior plan is still sound. Replanning is expensive and breaks momentum, so prefer keeping unless you have a real reason to replace.
+- Use "replace" when:
+  - A new obstacle has appeared in the path of any pending action.
+  - The target moved, alignment drifted, or the previous action did not have its intended effect.
+  - You want a small adjustment — emit "replace" with a plan that mirrors most of the pending actions but tweaks what needs changing.
+  - goal_status changes to "completed" or "abort".
+- On the very first cycle (no current plan provided), always emit "replace".
+
+PLANNING — when plan_decision == "replace", return an ordered sequence of 3-10 actions:
 - Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°),
   tracked via accumulated rotations. Use this to reason about where previously seen objects are relative to the drone's current heading.
 - Each action must be safe and progress toward the goal.
@@ -127,12 +140,22 @@ Output must match the schema exactly. No extra text."""
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history: list, object_memory: list, area_description: str = "") -> dict:
+def vision_planner_agent(
+    goal: str,
+    image_base64: str,
+    telemetry: dict,
+    history: list,
+    object_memory: list,
+    area_description: str = "",
+    current_plan_actions: Optional[list] = None,
+    action_idx: int = 0,
+) -> dict:
     """Perceives the environment, plans a sequence of actions, and checks goal status.
 
     Returns:
         {
             "perception": { objects, obstacles, free_space, environment, risk_level },
+            "plan_decision": "keep" | "replace",
             "actions":    [ { action, value, reason }, ... ],
             "confidence": float,
             "goal_status": "continue" | "completed" | "abort",
@@ -151,14 +174,50 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
                 f" | {obj['distance']} | step {obj['step']}\n"
             )
 
+    if history:
+        history_text = "\nHistory (last 10 actions executed, oldest first):\n"
+        for i, h in enumerate(history, 1):
+            if isinstance(h, dict):
+                val = h.get("value")
+                history_text += (
+                    f"  {i}. {h.get('action', '?')}"
+                    + (f" {val}" if val else "")
+                    + f" — {h.get('reason', '')}\n"
+                )
+            else:
+                history_text += f"  {i}. {h}\n"
+    else:
+        history_text = "\nHistory: empty (no actions executed yet)\n"
+
+    if current_plan_actions:
+        plan_text = "\nCurrent in-flight plan:\n"
+        for i, a in enumerate(current_plan_actions):
+            if i < action_idx:
+                marker = "DONE"
+            elif i == action_idx:
+                marker = "NEXT"
+            else:
+                marker = "PEND"
+            val = a.get("value")
+            plan_text += (
+                f"  [{marker}] {i+1}. {a['action']}"
+                + (f" {val}" if val else "")
+                + f" — {a.get('reason', '')}\n"
+            )
+        if action_idx >= len(current_plan_actions):
+            plan_text += "  (all actions of current plan completed)\n"
+    else:
+        plan_text = "\nCurrent in-flight plan: none (first cycle — must use plan_decision='replace')\n"
+
     prompt = [
         SystemMessage(content=_PLANNER_SYSTEM),
         HumanMessage(content=[
             {"type": "image", "base64": image_base64, "mime_type": "image/jpg"},
             {"type": "text", "text": (
                 f"Goal: {goal}\n"
-                f"Telemetry: {json.dumps(telemetry)}\n"
-                f"History (last 10): {list(history)}\n"
+                f"Telemetry: {json.dumps(telemetry)}"
+                f"{history_text}"
+                f"{plan_text}"
                 f"Current area description: {area_description if area_description else 'none yet — first cycle'}"
                 f"{memory_text}"
             )}
@@ -167,15 +226,19 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
 
     try:
         result = _planner_llm.invoke(prompt)
-        print("[PLANNER] Plan received:")
-        for i, a in enumerate(result.actions, 1):
-            print(f"  {i}. {a.action}" + (f" {a.value}" if a.value else "") + f" — {a.reason}")
+        print(f"[PLANNER] Plan received (decision={result.plan_decision}):")
+        if result.plan_decision == "replace":
+            for i, a in enumerate(result.actions, 1):
+                print(f"  {i}. {a.action}" + (f" {a.value}" if a.value else "") + f" — {a.reason}")
+        else:
+            print("  (keeping current in-flight plan)")
         print(f"  Goal: {result.goal_status} | {result.goal_reason}")
     except Exception as e:
         print("[PLANNER] Failed, hovering:", e)
         result = PlannerOutput(
             objects=[], obstacles=[], free_space=[],
             environment="unknown", risk_level="high",
+            plan_decision="replace",
             actions=[ActionItem(action="hover", reason="fallback — planner error")],
             confidence=0.0,
             goal_status="continue", goal_reason="fallback — planner error",
@@ -185,6 +248,7 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
     d = result.model_dump()
     return {
         "perception": {k: d[k] for k in ("objects", "obstacles", "free_space", "environment", "risk_level")},
+        "plan_decision": d["plan_decision"],
         "actions":    d["actions"],
         "confidence": d["confidence"],
         "goal_status": d["goal_status"],

@@ -118,6 +118,8 @@ while not kill_switch.is_set():
         "area_description": "",
         "current_heading": 0,
         "step":            0,
+        "current_plan_actions": None,  # list of action dicts the executor is working through
+        "action_idx":      0,          # index of the next action to be executed
     }
 
     # ── Planner output (planner thread writes, executor reads) ─────────────
@@ -136,6 +138,11 @@ while not kill_switch.is_set():
                 telemetry_snap = dict(mission["telemetry"])
                 obj_mem_snap  = list(mission["object_memory"])
                 area_desc_snap = mission["area_description"]
+                plan_actions_snap = (
+                    copy.deepcopy(mission["current_plan_actions"])
+                    if mission["current_plan_actions"] is not None else None
+                )
+                action_idx_snap = mission["action_idx"]
 
             image = sdk.TakePicture()
             if not image:
@@ -146,6 +153,8 @@ while not kill_switch.is_set():
                 result = vision_planner_agent(
                     goal, image, telemetry_snap,
                     history_snap, obj_mem_snap, area_desc_snap,
+                    current_plan_actions=plan_actions_snap,
+                    action_idx=action_idx_snap,
                 )
             except Exception as e:
                 print("[PLANNER THREAD] Error:", e)
@@ -233,16 +242,42 @@ while not kill_switch.is_set():
     risk_level = "low"
     just_refreshed_for_sensitive = False
 
-    # ── Executor loop: single pass refreshes plan in place each iteration ───
+    # ── Executor loop: planner emits keep/replace decisions; executor honours them ─
     while drone_active and not kill_switch.is_set():
 
-        # 1. Refresh plan if the planner has produced a newer one
+        # 1. Pick up any new planner result and apply its keep/replace decision
         with plan_lock:
             live_seq = plan_seq[0]
-            new_plan_available = (plan_box[0] is not None and live_seq != last_exec_seq)
-            if new_plan_available:
-                current_plan = copy.deepcopy(plan_box[0])
+            new_result_available = (plan_box[0] is not None and live_seq != last_exec_seq)
+            if new_result_available:
+                new_result = copy.deepcopy(plan_box[0])
                 last_exec_seq = live_seq
+            else:
+                new_result = None
+
+        if new_result_available:
+            decision = new_result.get("plan_decision", "replace")
+            risk_level, goal_status = _apply_plan_state(new_result, last_exec_seq)
+
+            if goal_status in ("completed", "abort"):
+                if goal_status == "completed":
+                    print(f"[DONE] Goal completed: {goal}")
+                else:
+                    print(f"[ABORT] {new_result['goal_reason']}")
+                drone_active = False
+                break
+
+            if decision == "replace" or current_plan is None:
+                current_plan = new_result
+                action_idx = 0
+                print(f"[EXECUTOR] Plan replaced ({len(current_plan['actions'])} actions)")
+            else:
+                remaining = len(current_plan["actions"]) - action_idx
+                print(f"[EXECUTOR] Plan kept; {remaining} action(s) remaining")
+
+            with state_lock:
+                mission["current_plan_actions"] = list(current_plan["actions"])
+                mission["action_idx"] = action_idx
 
         if current_plan is None:
             print("[EXECUTOR] No plan yet — waiting...")
@@ -250,18 +285,7 @@ while not kill_switch.is_set():
             plan_event.wait(timeout=15)
             continue
 
-        if new_plan_available:
-            risk_level, goal_status = _apply_plan_state(current_plan, last_exec_seq)
-            action_idx = 0
-            if goal_status in ("completed", "abort"):
-                if goal_status == "completed":
-                    print(f"[DONE] Goal completed: {goal}")
-                else:
-                    print(f"[ABORT] {current_plan['goal_reason']}")
-                drone_active = False
-                break
-
-        # 2. Out of actions in current plan — wait for the next one to arrive
+        # 2. Out of actions in current plan — wait for the next planner result
         if action_idx >= len(current_plan["actions"]):
             plan_event.clear()
             plan_event.wait(timeout=15)
@@ -312,8 +336,14 @@ while not kill_switch.is_set():
 
         sdk.DroneFlightController(final_action, final_value)
 
+        action_idx += 1
+
         with state_lock:
-            mission["history"].append(final_action)
+            mission["history"].append({
+                "action": final_action,
+                "value": final_value,
+                "reason": action_item.get("reason", ""),
+            })
             mission["step"] += 1
             if final_action == "rotate_clockwise":
                 mission["current_heading"] = (mission["current_heading"] + final_value) % 360
@@ -321,8 +351,7 @@ while not kill_switch.is_set():
                 mission["current_heading"] = (mission["current_heading"] - final_value) % 360
             ch = mission["current_heading"]
             _update_object_distances(mission["object_memory"], final_action, final_value, ch)
-
-        action_idx += 1
+            mission["action_idx"] = action_idx
 
     # ── Mission done — stop background threads ──────────────────────────────
     stop_planner.set()
