@@ -99,7 +99,7 @@ COLLISION DETECTION — check this before planning any movement:
 - If obstacles block all forward paths, prioritize moving up, back, or rotating to find a clear direction.
 - Set risk_level to "high" if any obstacle is within 80cm, "medium" if within 150cm, "low" otherwise.
 
-PLANNING — return an ordered sequence of 1-10 actions:
+PLANNING — return an ordered sequence of 3-10 actions:
 - Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°),
   tracked via accumulated rotations. Use this to reason about where previously seen objects are relative to the drone's current heading.
 - Each action must be safe and progress toward the goal.

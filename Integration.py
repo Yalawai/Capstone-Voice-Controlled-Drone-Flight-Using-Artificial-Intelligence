@@ -96,8 +96,8 @@ def _needs_fresh_plan(action_item: dict, risk_level: str) -> bool:
 print("\n===== Drone Control Ready =====")
 
 while not kill_switch.is_set():
-    goal = get_voice_command()
-    # goal = input("[GOAL]: ")
+    #goal = get_voice_command()
+    goal = input("[GOAL]: ")
 
     if not goal or goal.startswith("("):
         print("[SKIPPED] No valid voice command.")
@@ -231,6 +231,7 @@ while not kill_switch.is_set():
     last_exec_seq = -1
     action_idx = 0
     risk_level = "low"
+    just_refreshed_for_sensitive = False
 
     # ── Executor loop: single pass refreshes plan in place each iteration ───
     while drone_active and not kill_switch.is_set():
@@ -270,7 +271,9 @@ while not kill_switch.is_set():
 
         # 3. Sensitive action — block for a brand-new planner response, then loop
         #    back to the top so the freshest plan is applied in place.
-        if _needs_fresh_plan(action_item, risk_level):
+        #    Skip this check if we already fetched a fresh plan for this action
+        #    to avoid looping forever when the new plan also has sensitive keywords.
+        if _needs_fresh_plan(action_item, risk_level) and not just_refreshed_for_sensitive:
             print(f"[EXECUTOR] '{action_item['action']}' is sensitive (risk={risk_level}) — "
                   f"waiting for fresh plan before executing...")
             with plan_lock:
@@ -282,8 +285,12 @@ while not kill_switch.is_set():
             if not got or fresh_seq == seq_before:
                 print("[EXECUTOR] Timeout waiting for fresh plan — hovering")
                 sdk.DroneFlightController("hover", 0)
+            else:
+                just_refreshed_for_sensitive = True
             # Loop back; top of loop will pull in the fresh plan and update in place.
             continue
+
+        just_refreshed_for_sensitive = False
 
         # 4. Execute the action
         time.sleep(1)
