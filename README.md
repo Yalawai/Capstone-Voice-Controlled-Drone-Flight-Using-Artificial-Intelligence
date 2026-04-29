@@ -1,98 +1,100 @@
-# Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence
-This project explores integrating a Vision–Language model with an aerial drone to enable intuitive, voice- based control of flight and task execution. Students will set up and configure existing drone software stacks, integrate pre-trained AI models, and fine-tune them for drone-specific tasks
+# Voice-Controlled Drone Flight Using Artificial Intelligence
 
-# Project Setup
+## Overview
 
+This project demonstrates an **AI-powered drone control system** that
+enables a drone to interpret **voice commands**, analyze its
+environment, and execute safe navigation actions autonomously.
 
-Follow the steps below to set up the project and install all required
-dependencies.
+The system integrates: - Voice recognition - Vision-based scene
+understanding - AI planning and decision-making - Real-time drone
+control via SDK
 
-------------------------------------------------------------------------
+The drone continuously captures visual input, evaluates its
+surroundings, and dynamically plans safe movement toward a goal while
+avoiding obstacles.
 
-## 1. Clone the Repository
+## Features
 
-First, clone the repository to your local machine.
+-   **Voice Command Input**
+    -   Users provide high-level instructions (for example, "go to the
+        chair")
+-   **AI-Based Planning**
+    -   Generates structured navigation plans using environment
+        understanding
+    -   Produces actions, risk levels, and goal status
+-   **Vision Processing**
+    -   Captures real-time frames from the drone camera
+    -   Extracts scene information for planning and obstacle detection
+-   **Obstacle Avoidance**
+    -   Performs safety checks before executing each movement
+    -   Prevents unsafe or risky actions
+-   **Closed-Loop Control**
+    -   Replans after every movement using updated environment data
+-   **Safety Mechanisms**
+    -   Keyboard kill switch (ESC)
+    -   Keepalive system to prevent auto-landing
+
+## Project Structure
+
+``` text
+.
+├── Integration.py
+├── tello_sdk_controls_dir/
+├── vision_action_controller_dir/
+├── whisper_cpp/
+├── yolo_object_detection_dir/
+├── requirements.txt
+├── graph.png
+└── README.md
+```
+
+## Setup Instructions
+
+### Clone the Repository
 
 ``` bash
 git clone https://github.com/Yalawai/Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence.git
-
+cd Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence
 ```
 
-------------------------------------------------------------------------
-
-## 2. Create a Virtual Environment
-
-Create a Python virtual environment to keep project dependencies
-isolated.
+### Create a Virtual Environment
 
 ``` bash
 python -m venv .venv
 ```
 
-This will create a folder called `venv` containing the virtual
-environment.
+### Activate the Environment
 
-------------------------------------------------------------------------
-
-## 3. Activate the Virtual Environment
-
-### Windows
+**Windows**
 
 ``` bash
 .venv\Scripts\activate
 ```
 
-### macOS / Linux
+**macOS / Linux**
 
 ``` bash
 source .venv/bin/activate
 ```
 
-After activation, your terminal prompt should show something similar to:
-
-    (.venv)
-
-------------------------------------------------------------------------
-
-## 4. Install Required Dependencies
-
-Install all required Python packages listed in `requirements.txt`.
+### Install Dependencies
 
 ``` bash
 pip install -r requirements.txt
 ```
 
-------------------------------------------------------------------------
-
-## 5. Verify Installation (Optional)
-
-You can check that the packages installed correctly using:
+## Running the Project
 
 ``` bash
-pip list
+python Integration.py
 ```
 
-------------------------------------------------------------------------
+## Safety Considerations
 
-## 6. Deactivate the Virtual Environment
+-   Test in an open indoor space
+-   Maintain line of sight with the drone
+-   Be ready to press ESC for emergency stop
+-   Avoid operating near people or fragile objects
 
-When you are done working on the project, you can deactivate the
-environment:
 
-``` bash
-deactivate
-```
-
-------------------------------------------------------------------------
-
-## Requirements
-
--   Python 3.8 or higher
--   pip (Python package manager)
-
-------------------------------------------------------------------------
-
-## Notes
-
-Using a virtual environment ensures that the dependencies used in this
-project do not interfere with other Python projects on your system.
