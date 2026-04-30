@@ -117,6 +117,8 @@ while not kill_switch.is_set():
 
     def _call_planner(current_plan_actions, action_idx):
         """Take a picture and call the planner. Returns the result dict or None on failure."""
+        # Let the drone settle so the camera frame isn't motion-blurred from the prior action
+        time.sleep(0.7)
         image = sdk.TakePicture()
         if not image:
             return None
@@ -265,8 +267,8 @@ while not kill_switch.is_set():
                 action_idx += 1
             continue
 
-        # Execute the action
-        time.sleep(1)
+        # Execute the action (djitellopy SDK calls block until the drone confirms completion,
+        # so consecutive actions are already serialized — no extra delay needed here)
         final_action = action_item["action"]
         final_value  = int(action_item["value"]) if action_item.get("value") is not None else 0
 

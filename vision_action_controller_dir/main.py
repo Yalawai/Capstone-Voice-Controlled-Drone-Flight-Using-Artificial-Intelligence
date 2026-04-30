@@ -75,7 +75,7 @@ DISTANCE ESTIMATION GUIDE (Tello camera ~82° FOV):
 - Use the object's known real size vs apparent frame coverage to estimate depth.
 - Reference sizes: person ~170cm tall, chair ~80cm tall, door ~200cm tall, table ~75cm tall, wall fills full frame edge-to-edge.
 - If an object fills ~100% of frame height → ~20-30cm. ~50% → ~80-120cm. ~25% → ~180-250cm. ~10% → ~400-600cm. ~5% → ~800cm+.
-- Croeck with object type: e.g. a person at 25% frame height ≈ 170/(0.25*tass-chn(41°)*2) ≈ ~200cm.
+- Cross-check the table against the object's known size — e.g. a person (~170cm tall) filling ~25% of frame height matches the ~180-250cm bucket above.
 - Always return distance in cm as a string like "200cm". Use "unknown" only if the object type gives no size reference.
 
 TELEMETRY FIELDS (provided each cycle):
@@ -90,14 +90,14 @@ COLLISION DETECTION — check this before planning any movement:
 - Examine all detected obstacles and objects with their angles and distances.
 - For each proposed movement direction, check if any obstacle is in the path:
   - move_forward: objects with h_angle within ±20°, v_angle within ±20°
-  - move_back: objects with h_angle outside ±160° (i.e. behind), v_angle within ±20°
+  - move_back: the camera only sees forward (±41°), so there is no visual collision check available behind the drone. Treat move_back as safe by default, but prefer rotating to look before backing up if you have any doubt about what's behind you.
   - move_left: objects with h_angle -41° to -20°, v_angle within ±20°
   - move_right: objects with h_angle +20° to +41°, v_angle within ±20°
   - move_up: objects with v_angle +10° to +30°
   - move_down: objects with v_angle -10° to -30°
 - If an obstacle in that direction has a known distance ≤ 80cm, DO NOT plan that movement — replace it with a safe alternative (rotate away, move in a clear direction, or hover).
-- EXCEPTION: if the object blocking the path IS the navigation goal target, allow approach until the target is ~10cm away (i.e. stop when the target distance ≤ 10cm). This 10cm approach-stop applies only to the specific target you are navigating toward, not to any other obstacle.
 - If an obstacle fills >80% of the frame in ANY direction, treat it as within 30cm and do not move toward it.
+- EXCEPTION (navigation goal target only): both the 80cm distance rule and the >80% frame-fill rule are waived for the specific object you are flying to. Approach the target until it is ~20cm away (stop when target distance ≤ 20cm). This exception applies ONLY to the goal target, never to any other obstacle.
 - Rotations (rotate_clockwise, rotate_counter_clockwise) are always safe for collision purposes.
 - If obstacles block all forward paths, prioritize moving up, back, or rotating to find a clear direction.
 - Set risk_level to "high" if any obstacle is within 80cm, "medium" if within 150cm, "low" otherwise.
@@ -118,10 +118,10 @@ PLANNING — when plan_decision == "replace", return an ordered sequence of 1-10
 - Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°),
   tracked via accumulated rotations. Use this to reason about where previously seen objects are relative to the drone's current heading.
 - Each action must be safe and progress toward the goal.
-- Keep movements small unless confident with large space: 20-200 cm for distance. When lining up/aligning with a target, use small rotation increments.
+- Keep movements small unless confident with large space: 20-200 cm for distance. When lining up/aligning with a target, use 5° rotation increments.
 - value is required for movement/rotation actions, null for takeoff/land/hover/api_check.
 - Do NOT use "takeoff" — the drone is already airborne when planning begins.
-- When asked to fly/go/move to an object: align the crosshair on the target first, then approach with forward movements until the target is ~10cm away (fills nearly the full frame), then stop. The default stopping distance for any navigation goal is 10cm from the target.
+- When asked to fly/go/move to an object: align the crosshair on the target first, then approach with forward movements until the target is ~20cm away (fills nearly the full frame), then stop. The default stopping distance for any navigation goal is 20cm from the target.
 - The closer you are to the target, rotate slower before moving to it; make sure the center of the crosshair is on the target before moving forward.
 - ALWAYS run collision detection before adding any movement action — never plan a move into an obstacle.
 - If the goal object is not visible AND its location is completely unknown (not in object memory, no directional hint): rotate clockwise by 82° (one full camera FOV width) per step with an api_check after each rotation to scan the room systematically. Do NOT move forward or laterally during this scan — spin in place only until the target comes into view.
@@ -146,8 +146,8 @@ AREA DESCRIPTION:
 
 GOAL CHECK:
 - goal_status "completed": the goal is fully achieved — stop planning movement.
-  - For any "fly to X" / "go to X" / "move to X" / "approach X" goal: mark completed when the target object is within ~10cm (fills nearly the entire frame). The drone should stop 10cm away from the target by default.
-  - Do NOT mark completed until the target distance is ≤ 10cm — keep planning forward movements until you reach that stopping distance.
+  - For any "fly to X" / "go to X" / "move to X" / "approach X" goal: mark completed when the target object is within ~20cm (fills nearly the entire frame). The drone should stop 20cm away from the target by default.
+  - Do NOT mark completed until the target distance is ≤ 20cm — keep planning forward movements until you reach that stopping distance.
 - goal_status "abort": situation is unsafe or goal is impossible.
 - goal_status "continue": more steps needed.
 
