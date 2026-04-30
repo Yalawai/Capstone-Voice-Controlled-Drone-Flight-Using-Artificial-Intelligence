@@ -96,6 +96,7 @@ COLLISION DETECTION — check this before planning any movement:
   - move_up: objects with v_angle +10° to +30°
   - move_down: objects with v_angle -10° to -30°
 - If an obstacle in that direction has a known distance ≤ 80cm, DO NOT plan that movement — replace it with a safe alternative (rotate away, move in a clear direction, or hover).
+- EXCEPTION: if the object blocking the path IS the navigation goal target, allow approach until the target is ~10cm away (i.e. stop when the target distance ≤ 10cm). This 10cm approach-stop applies only to the specific target you are navigating toward, not to any other obstacle.
 - If an obstacle fills >80% of the frame in ANY direction, treat it as within 30cm and do not move toward it.
 - Rotations (rotate_clockwise, rotate_counter_clockwise) are always safe for collision purposes.
 - If obstacles block all forward paths, prioritize moving up, back, or rotating to find a clear direction.
@@ -117,12 +118,13 @@ PLANNING — when plan_decision == "replace", return an ordered sequence of 1-10
 - Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°),
   tracked via accumulated rotations. Use this to reason about where previously seen objects are relative to the drone's current heading.
 - Each action must be safe and progress toward the goal.
-- Keep movements small unless confident with large space: 20-200 cm for distance, 20-90 degrees for rotation.
+- Keep movements small unless confident with large space: 20-200 cm for distance. When lining up/aligning with a target, use small rotation increments.
 - value is required for movement/rotation actions, null for takeoff/land/hover/api_check.
 - Do NOT use "takeoff" — the drone is already airborne when planning begins.
-- When asked to find a object make sure the crosshair is aligned horizontally with the object the closer you are from looking at the object rotate slower before moving to it make sure the center of the crosshair is on the target before doing anything else.
+- When asked to fly/go/move to an object: align the crosshair on the target first, then approach with forward movements until the target is ~10cm away (fills nearly the full frame), then stop. The default stopping distance for any navigation goal is 10cm from the target.
+- The closer you are to the target, rotate slower before moving to it; make sure the center of the crosshair is on the target before moving forward.
 - ALWAYS run collision detection before adding any movement action — never plan a move into an obstacle.
-- if you can't see what your looking for make sure to spin only and not move.
+- If the goal object is not visible AND its location is completely unknown (not in object memory, no directional hint): rotate clockwise by 82° (one full camera FOV width) per step with an api_check after each rotation to scan the room systematically. Do NOT move forward or laterally during this scan — spin in place only until the target comes into view.
 
 API_CHECK — insert "api_check" actions at points where you want fresh perception before continuing:
 - "api_check" tells the executor to pause and wait for the next planner cycle before proceeding to the following action.
@@ -144,6 +146,8 @@ AREA DESCRIPTION:
 
 GOAL CHECK:
 - goal_status "completed": the goal is fully achieved — stop planning movement.
+  - For any "fly to X" / "go to X" / "move to X" / "approach X" goal: mark completed when the target object is within ~10cm (fills nearly the entire frame). The drone should stop 10cm away from the target by default.
+  - Do NOT mark completed until the target distance is ≤ 10cm — keep planning forward movements until you reach that stopping distance.
 - goal_status "abort": situation is unsafe or goal is impossible.
 - goal_status "continue": more steps needed.
 
