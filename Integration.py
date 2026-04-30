@@ -270,6 +270,13 @@ while not kill_switch.is_set():
         final_action = action_item["action"]
         final_value  = int(action_item["value"]) if action_item.get("value") is not None else 0
 
+        # Cap rotation to 5° when lining up with an object
+        _ALIGN_KEYWORDS = {"align", "crosshair", "line up", "lineup", "center"}
+        reason_lower = action_item.get("reason", "").lower()
+        if final_action in ("rotate_clockwise", "rotate_counter_clockwise") and \
+                any(kw in reason_lower for kw in _ALIGN_KEYWORDS):
+            final_value = min(final_value, 5)
+
         step = mission["step"]
         print(f"[EXECUTOR] Step {step + 1}: {final_action}" +
               (f" {final_value}" if final_value else "") +
