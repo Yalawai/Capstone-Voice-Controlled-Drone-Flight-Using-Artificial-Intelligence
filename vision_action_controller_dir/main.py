@@ -50,6 +50,11 @@ class PlannerOutput(BaseModel):
     goal_reason: str
     area_description: str           # running description of the environment, updated each cycle
     message_to_user: Optional[str] = None
+    target_visible: bool = False                  # true iff the goal target is in this frame
+    target_type: Optional[str] = None             # type label of the goal target (matches an entry in `objects`)
+    target_bbox: Optional[List[float]] = None     # [x_center, y_center, width, height] normalized 0-1
+    target_size_cm: Optional[float] = None        # your estimate of the target's largest real-world dimension in cm
+    target_bbox_threshold: float = 0.70           # bbox-height stop threshold chosen from the size chart (0.40–0.75)
 
 
 # ── LLMs ──────────────────────────────────────────────────────────────────────
@@ -78,6 +83,21 @@ DISTANCE ESTIMATION GUIDE (Tello camera ~82° FOV):
 - Cross-check the table against the object's known size — e.g. a person (~170cm tall) filling ~25% of frame height matches the ~180-250cm bucket above.
 - Always return distance in cm as a string like "200cm". Use "unknown" only if the object type gives no size reference.
 
+TARGET TRACKING (for goals like "fly to X" / "go to X" / "approach X" / "find X"):
+- Identify which detected object best matches the goal target.
+- target_visible: true iff the goal target is visible in this frame, false otherwise.
+- target_type: type label of the goal target (e.g., "chair", "person", "bottle"). Must match an entry in `objects`.
+- target_bbox: [x_center, y_center, width, height] in normalized 0-1 coords (fractions of frame width/height). Estimate a tight bounding box around the target.
+- target_size_cm: using your world knowledge of the target type, estimate its largest real-world dimension in cm (e.g., phone ≈ 15, mug ≈ 10, book ≈ 25, laptop ≈ 35, monitor ≈ 60, chair ≈ 80, person ≈ 170, table ≈ 120, door ≈ 200).
+- target_bbox_threshold: pick the bbox-height stop threshold from this size chart, based on target_size_cm:
+    ≤ 20 cm   (small handheld: phone, mug, mouse, ball, can, remote)         → 0.40
+    21-50 cm  (medium handheld: book, laptop, keyboard, helmet, microwave)   → 0.55
+    51-100 cm (small furniture: chair, monitor, small appliance, suitcase)   → 0.65
+    > 100 cm  (large: person, table, door, sofa, fridge, vehicle, wall)      → 0.75
+  Lower threshold = drone halts farther away, which is the safe choice for small/delicate targets. Higher threshold = drone closes in more before stopping, appropriate for large targets.
+- The executor decides when the drone is close enough using target_bbox and target_bbox_threshold — your job is to report them accurately, not to decide on the stop.
+- For non-approach goals (takeoff, scan, hover), set target_visible=false and leave target_type/target_bbox/target_size_cm null; target_bbox_threshold is ignored.
+
 TELEMETRY FIELDS (provided each cycle):
 - h: current altitude in cm (barometric)
 - bat: battery percentage
@@ -97,7 +117,8 @@ COLLISION DETECTION — check this before planning any movement:
   - move_down: objects with v_angle -10° to -30°
 - If an obstacle in that direction has a known distance ≤ 80cm, DO NOT plan that movement — replace it with a safe alternative (rotate away, move in a clear direction, or hover).
 - If an obstacle fills >80% of the frame in ANY direction, treat it as within 30cm and do not move toward it.
-- EXCEPTION (navigation goal target only): both the 80cm distance rule and the >80% frame-fill rule are waived for the specific object you are flying to. Approach the target until it is ~20cm away (stop when target distance ≤ 20cm). This exception applies ONLY to the goal target, never to any other obstacle.
+- EXCEPTION (navigation goal target only): both the 80cm distance rule and the >80% frame-fill rule are waived for the specific object you are flying to, AND a high risk_level driven solely by the target itself must NOT cause you to plan rotate-away / hover / retreat actions. Continue approaching the target with forward moves — the executor will halt the mission when the bbox stop condition is met. This exception applies ONLY to the goal target, never to any other obstacle.
+- The goal target belongs ONLY in `objects`, never in `obstacles`. The collision rules above never apply to it.
 - Rotations (rotate_clockwise, rotate_counter_clockwise) are always safe for collision purposes.
 - If obstacles block all forward paths, prioritize moving up, back, or rotating to find a clear direction.
 - Set risk_level to "high" if any obstacle is within 80cm, "medium" if within 150cm, "low" otherwise.
@@ -121,7 +142,8 @@ PLANNING — when plan_decision == "replace", return an ordered sequence of 1-10
 - Keep movements small unless confident with large space: 20-200 cm for distance. When lining up/aligning with a target, use 5° rotation increments.
 - value is required for movement/rotation actions, null for takeoff/land/hover/api_check.
 - Do NOT use "takeoff" — the drone is already airborne when planning begins.
-- When asked to fly/go/move to an object: align the crosshair on the target first, then approach with forward movements until the target is ~20cm away (fills nearly the full frame), then stop. The default stopping distance for any navigation goal is 20cm from the target.
+- When asked to fly/go/move to an object: align the crosshair on the target first, then approach with forward movements. Keep planning forward moves while the target is visible — the executor decides when to stop based on target_bbox, so do NOT preemptively mark the goal completed.
+- FINAL APPROACH (when target_bbox height ≥ 0.40): plan ONE small forward move (20-30cm) followed by an api_check, then re-evaluate. Do NOT plan all-rotation cycles during final approach unless the target is more than 15° off-center horizontally — small lateral drift is acceptable and will be corrected after the next forward step. Every plan during this phase MUST contain at least one move_forward action.
 - The closer you are to the target, rotate slower before moving to it; make sure the center of the crosshair is on the target before moving forward.
 - ALWAYS run collision detection before adding any movement action — never plan a move into an obstacle.
 - If the goal object is not visible AND its location is completely unknown (not in object memory, no directional hint): rotate clockwise by 82° (one full camera FOV width) per step with an api_check after each rotation to scan the room systematically. Do NOT move forward or laterally during this scan — spin in place only until the target comes into view.
@@ -145,11 +167,10 @@ AREA DESCRIPTION:
 - Example: "Indoor office room. Desk and chair on the right side. Window on the far wall straight ahead. Open corridor to the left."
 
 GOAL CHECK:
-- goal_status "completed": the goal is fully achieved — stop planning movement.
-  - For any "fly to X" / "go to X" / "move to X" / "approach X" goal: mark completed when the target object is within ~20cm (fills nearly the entire frame). The drone should stop 20cm away from the target by default.
-  - Do NOT mark completed until the target distance is ≤ 20cm — keep planning forward movements until you reach that stopping distance.
+- For approach goals ("fly to X" / "go to X" / "move to X" / "approach X"): default to goal_status="continue" while the target is visible. The executor will mark the mission completed based on target_bbox — do NOT preemptively mark completed.
+- For non-approach goals (takeoff, scan room, hover, descend, etc.): use goal_status="completed" when the action goal is achieved.
 - goal_status "abort": situation is unsafe or goal is impossible.
-- goal_status "continue": more steps needed.
+- goal_status "continue": more steps needed (default for approach goals).
 
 Output must match the schema exactly. No extra text."""
 
@@ -259,7 +280,9 @@ def vision_planner_agent(
             actions=[ActionItem(action="hover", reason="fallback — planner error")],
             confidence=0.0,
             goal_status="continue", goal_reason="fallback — planner error",
-            area_description=area_description
+            area_description=area_description,
+            target_visible=False, target_type=None, target_bbox=None,
+            target_size_cm=None, target_bbox_threshold=0.70,
         )
 
     d = result.model_dump()
@@ -272,4 +295,9 @@ def vision_planner_agent(
         "goal_reason": d["goal_reason"],
         "area_description": d["area_description"],
         "message_to_user": d.get("message_to_user"),
+        "target_visible":         d.get("target_visible", False),
+        "target_type":            d.get("target_type"),
+        "target_bbox":            d.get("target_bbox"),
+        "target_size_cm":         d.get("target_size_cm"),
+        "target_bbox_threshold":  d.get("target_bbox_threshold", 0.70),
     }

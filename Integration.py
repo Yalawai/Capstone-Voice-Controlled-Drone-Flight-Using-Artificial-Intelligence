@@ -38,6 +38,30 @@ def _parse_cm(distance_str: str):
         return None
 
 
+# Stop threshold is supplied by the planner per the size chart in its system prompt.
+# This is the fallback if the planner omits it.
+_BBOX_THRESHOLD_FALLBACK = 0.70
+_BBOX_GROWTH_MIN         = 0.02   # if a forward step grew bbox by less than this, approach has saturated
+
+
+def _check_close_enough(target_bbox, target_threshold, prev_h):
+    """Decide if the drone is close enough to the goal target.
+
+    Returns (completed, current_h, reason). current_h is None if bbox is missing/invalid."""
+    if not target_bbox or len(target_bbox) < 4:
+        return False, None, ""
+    try:
+        h = float(target_bbox[3])
+    except (TypeError, ValueError):
+        return False, None, ""
+    threshold = float(target_threshold) if target_threshold is not None else _BBOX_THRESHOLD_FALLBACK
+    if h >= threshold:
+        return True, h, f"bbox h={h:.2f} >= {threshold:.2f}"
+    if prev_h is not None and (h - prev_h) < _BBOX_GROWTH_MIN:
+        return True, h, f"bbox growth {h - prev_h:+.3f} below {_BBOX_GROWTH_MIN} after forward step — approach saturated"
+    return False, h, ""
+
+
 def _update_object_distances(object_memory: list, action: str, value_cm: int, current_heading: int):
     """Adjust stored object distances after a movement action."""
     _FORWARD_ACTIONS  = {"move_forward": -1, "move_back": +1}
@@ -106,6 +130,7 @@ while not kill_switch.is_set():
         "area_description": "",
         "current_heading": 0,
         "step":            0,
+        "prev_target_bbox_h": None,   # last cycle's target_bbox height; growth check compares against this
     }
 
     # ── Keepalive thread (planner is now synchronous, no planner thread) ───
@@ -141,6 +166,18 @@ while not kill_switch.is_set():
         risk_level = perception.get("risk_level", "low")
         goal_status = plan["goal_status"]
 
+        target_bbox      = plan.get("target_bbox")
+        target_type      = plan.get("target_type")
+        target_size_cm   = plan.get("target_size_cm")
+        target_threshold = plan.get("target_bbox_threshold", _BBOX_THRESHOLD_FALLBACK)
+        done, h_now, reason = _check_close_enough(target_bbox, target_threshold, mission["prev_target_bbox_h"])
+        prev_h_for_log = mission["prev_target_bbox_h"]
+        mission["prev_target_bbox_h"] = h_now   # None if target not visible — resets growth baseline
+        if done and goal_status == "continue":
+            goal_status = "completed"
+            plan["goal_status"] = "completed"
+            plan["goal_reason"] = f"target bbox stop condition: {reason}"
+
         new_tel = sdk.DroneSystemInformation()
         if new_tel:
             mission["telemetry"] = new_tel
@@ -153,6 +190,11 @@ while not kill_switch.is_set():
         print(f"\n[PLAN #{seq_num}] {len(plan['actions'])} action(s) | "
               f"goal={goal_status} | risk={risk_level} | "
               f"confidence={plan['confidence']:.2f}")
+        if h_now is not None:
+            prev_str = f"{prev_h_for_log:.2f}" if prev_h_for_log is not None else "—"
+            size_str = f"~{target_size_cm:.0f}cm" if target_size_cm else "?cm"
+            print(f"  [TARGET] {target_type or '?'} ({size_str}) bbox_h={h_now:.2f} "
+                  f"(prev={prev_str}, thresh={target_threshold:.2f})")
         if ad:
             print(f"  [AREA] {ad}")
         for obj in perception.get("objects", []):
@@ -300,6 +342,11 @@ while not kill_switch.is_set():
             mission["current_heading"] = (mission["current_heading"] - final_value) % 360
         ch = mission["current_heading"]
         _update_object_distances(mission["object_memory"], final_action, final_value, ch)
+
+        # Growth check on the next perception is only meaningful if the most recent action was a forward step.
+        # Any other action (rotate, lateral, vertical, hover) invalidates the comparison — reset the baseline.
+        if final_action != "move_forward":
+            mission["prev_target_bbox_h"] = None
 
     # ── Mission done — stop keepalive ──────────────────────────────────────
     stop_keepalive.set()
