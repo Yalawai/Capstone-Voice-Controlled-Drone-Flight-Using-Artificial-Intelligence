@@ -173,7 +173,7 @@ cmake --build build -j --config Release
 
 ## Reference
 
-[https://github.com/Yalawai/Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence/tree/main/whisper_cpp](https://github.com/ggml-org/whisper.cpp)
+[https://github.com/ggml-org/whisper.cpp?tab=readme-ov-file](https://github.com/ggml-org/whisper.cpp?tab=readme-ov-file)
 
 ## Running the Project
 
