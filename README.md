@@ -32,6 +32,11 @@ avoiding obstacles.
 -   **Safety Mechanisms**
     -   Keyboard kill switch (ESC)
     -   Keepalive system to prevent auto-landing
+ 
+## System Architecture
+
+<img width="5736" height="3476" alt="Final" src="https://github.com/user-attachments/assets/8dc924c1-7894-4c02-8198-70523e610cac" />
+
 
 
 
