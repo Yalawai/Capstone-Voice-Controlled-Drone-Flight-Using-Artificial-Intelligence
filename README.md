@@ -86,6 +86,12 @@ Higher models improve accuracy but may reduce speed and increase memory usage.
 
 You must manually download the Whisper model in **ggml format** and place it inside the appropriate directory used by the project.
 
+Change directory to whisper_cpp:
+
+```bash
+cd whisper_cpp
+```
+
 ### Step 1: Download a Model
 
 You can download models from the official repository:
@@ -101,7 +107,6 @@ wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
 Or using the provided script:
 
 ```bash
-cd whisper_cpp
 ./models/download-ggml-model.sh base.en
 ```
 Or Manually Download the model using the above link:
@@ -135,6 +140,15 @@ Change model path to the downloaded model name:
 Or
 
 Look for where the model is loaded and replace the path with your chosen model.
+
+** you need a C++ build environment + CMake + a compiler toolchain set up correctly **
+
+Now build the whisper-cli:
+```
+# build the project
+cmake -B build
+cmake --build build -j --config Release
+```
 
 ---
 
