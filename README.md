@@ -141,7 +141,7 @@ Or
 
 Look for where the model is loaded and replace the path with your chosen model.
 
-** you need a C++ build environment + CMake + a compiler toolchain set up correctly **
+#### **you need a C++ build environment + CMake + a compiler toolchain set up correctly**
 
 Now build the whisper-cli:
 ```
