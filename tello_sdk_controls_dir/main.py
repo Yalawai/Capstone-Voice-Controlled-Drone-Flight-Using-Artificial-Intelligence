@@ -66,9 +66,6 @@ class SDK:
             "move_up", "move_down", "rotate_clockwise", "rotate_counter_clockwise"
         }
         if action in _MOVEMENT_ACTIONS:
-            if numbers < 20:
-                print(f"[SDK] Skipping {action}: value {numbers} is below minimum 20")
-                return
             if numbers > 500:
                 numbers = 500
                 print(f"[SDK] Clamped {action} value to 500")

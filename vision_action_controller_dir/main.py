@@ -25,7 +25,8 @@ _ACTION_LITERAL = Literal[
     "takeoff", "land", "hover",
     "move_forward", "move_back", "move_left", "move_right",
     "move_up", "move_down",
-    "rotate_clockwise", "rotate_counter_clockwise"
+    "rotate_clockwise", "rotate_counter_clockwise",
+    "api_check"
 ]
 
 class ActionItem(BaseModel):
@@ -42,7 +43,8 @@ class PlannerOutput(BaseModel):
     free_space: List[Literal["left", "center", "right"]]
     environment: Literal["indoor", "outdoor", "unknown"]
     risk_level: Literal["low", "medium", "high"]
-    actions: List[ActionItem]       # ordered sequence of 1-5 actions
+    plan_decision: Literal["keep", "replace"]   # keep current in-flight plan, or replace it with `actions`
+    actions: List[ActionItem]       # ordered sequence of 3-10 actions; ignored when plan_decision == "keep"
     confidence: float
     goal_status: Literal["continue", "completed", "abort"]
     goal_reason: str
@@ -50,17 +52,9 @@ class PlannerOutput(BaseModel):
     message_to_user: Optional[str] = None
 
 
-# ── Avoidance output ───────────────────────────────────────────────────────────
-
-class AvoidanceOutput(BaseModel):
-    safe: bool      # True = safe to execute, False = skip this action
-    reason: str
-
-
 # ── LLMs ──────────────────────────────────────────────────────────────────────
 
 _planner_llm  = ChatGoogleGenerativeAI(model="gemini-robotics-er-1.6-preview", temperature=0).with_structured_output(PlannerOutput)
-_avoidance_llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0, thinking_budget=0).with_structured_output(AvoidanceOutput)
 
 
 # ── System prompts ─────────────────────────────────────────────────────────────
@@ -81,7 +75,7 @@ DISTANCE ESTIMATION GUIDE (Tello camera ~82° FOV):
 - Use the object's known real size vs apparent frame coverage to estimate depth.
 - Reference sizes: person ~170cm tall, chair ~80cm tall, door ~200cm tall, table ~75cm tall, wall fills full frame edge-to-edge.
 - If an object fills ~100% of frame height → ~20-30cm. ~50% → ~80-120cm. ~25% → ~180-250cm. ~10% → ~400-600cm. ~5% → ~800cm+.
-- Cross-check with object type: e.g. a person at 25% frame height ≈ 170/(0.25*tan(41°)*2) ≈ ~200cm.
+- Cross-check the table against the object's known size — e.g. a person (~170cm tall) filling ~25% of frame height matches the ~180-250cm bucket above.
 - Always return distance in cm as a string like "200cm". Use "unknown" only if the object type gives no size reference.
 
 TELEMETRY FIELDS (provided each cycle):
@@ -92,16 +86,57 @@ TELEMETRY FIELDS (provided each cycle):
 - vgx / vgy / vgz: velocity in cm/s (x=forward, y=lateral, z=vertical)
 - templ / temph: motor temperature low/high °C
 
-PLANNING — return an ordered sequence of 1-10 actions:
+COLLISION DETECTION — check this before planning any movement:
+- Examine all detected obstacles and objects with their angles and distances.
+- For each proposed movement direction, check if any obstacle is in the path:
+  - move_forward: objects with h_angle within ±20°, v_angle within ±20°
+  - move_back: the camera only sees forward (±41°), so there is no visual collision check available behind the drone. Treat move_back as safe by default, but prefer rotating to look before backing up if you have any doubt about what's behind you.
+  - move_left: objects with h_angle -41° to -20°, v_angle within ±20°
+  - move_right: objects with h_angle +20° to +41°, v_angle within ±20°
+  - move_up: objects with v_angle +10° to +30°
+  - move_down: objects with v_angle -10° to -30°
+- If an obstacle in that direction has a known distance ≤ 80cm, DO NOT plan that movement — replace it with a safe alternative (rotate away, move in a clear direction, or hover).
+- If an obstacle fills >80% of the frame in ANY direction, treat it as within 30cm and do not move toward it.
+- EXCEPTION (navigation goal target only): both the 80cm distance rule and the >80% frame-fill rule are waived for the specific object you are flying to. Approach the target until it is ~20cm away (stop when target distance ≤ 20cm). This exception applies ONLY to the goal target, never to any other obstacle.
+- Rotations (rotate_clockwise, rotate_counter_clockwise) are always safe for collision purposes.
+- If obstacles block all forward paths, prioritize moving up, back, or rotating to find a clear direction.
+- Set risk_level to "high" if any obstacle is within 80cm, "medium" if within 150cm, "low" otherwise.
+
+PLAN DECISION — choose "keep" or "replace":
+- You will be given the current in-flight plan (the actions the executor is working through) plus which action is up NEXT.
+- "keep": the pending actions of the current plan are still safe and still progress toward the goal. Set actions=[] (it will be ignored).
+- "replace": the situation has changed enough that the pending actions are no longer optimal — provide a fresh action list.
+- Default to "keep" when the prior plan is still sound. Replanning is expensive and breaks momentum, so prefer keeping unless you have a real reason to replace.
+- Use "replace" when:
+  - A new obstacle has appeared in the path of any pending action.
+  - The target moved, alignment drifted, or the previous action did not have its intended effect.
+  - You want a small adjustment — emit "replace" with a plan that mirrors most of the pending actions but tweaks what needs changing.
+  - goal_status changes to "completed" or "abort".
+- On the very first cycle (no current plan provided), always emit "replace".
+
+PLANNING — when plan_decision == "replace", return an ordered sequence of 1-10 actions:
 - Use the "Previously seen objects" list if provided — each entry has the object's absolute angle from the mission start heading (0°),
   tracked via accumulated rotations. Use this to reason about where previously seen objects are relative to the drone's current heading.
 - Each action must be safe and progress toward the goal.
-- Keep movements small unless confident with large space: 20-100 cm for distance, 20-90 degrees for rotation.
-- value is required for movement/rotation actions, null for takeoff/land/hover.
+- Keep movements small unless confident with large space: 20-200 cm for distance. When lining up/aligning with a target, use 5° rotation increments.
+- value is required for movement/rotation actions, null for takeoff/land/hover/api_check.
 - Do NOT use "takeoff" — the drone is already airborne when planning begins.
-- When asked to find a object make sure the crosshair is aligned horizontally with the object the closer you are from looking at the object rotate slower before moving to it make sure the center of the crosshair is on the target before doing anything else.
-- Make sure if there is a obstacle close to you make sure you move away from it before doing anything else
-- if you can't see what your looking for make sure to spin only and not move.
+- When asked to fly/go/move to an object: align the crosshair on the target first, then approach with forward movements until the target is ~20cm away (fills nearly the full frame), then stop. The default stopping distance for any navigation goal is 20cm from the target.
+- The closer you are to the target, rotate slower before moving to it; make sure the center of the crosshair is on the target before moving forward.
+- ALWAYS run collision detection before adding any movement action — never plan a move into an obstacle.
+- If the goal object is not visible AND its location is completely unknown (not in object memory, no directional hint): rotate clockwise by 41° (one full camera FOV width) per step with an api_check after each rotation to scan the room systematically. Do NOT move forward or laterally during this scan — spin in place only until the target comes into view.
+
+API_CHECK — insert "api_check" actions at points where you want fresh perception before continuing:
+- "api_check" tells the executor to pause and wait for the next planner cycle before proceeding to the following action.
+- Each api_check costs one extra perception call, so use it ONLY at real decision points — not before every action.
+- Insert one when the next action's safety or correctness depends on something that will have changed by the time it runs:
+  - After a rotation that's meant to line the crosshair up on a target, before moving toward it.
+  - Before a close-range maneuver where alignment or obstacle distance matters.
+  - After a movement that significantly changes what's visible (e.g., turning a corner, descending).
+  - Before the final approach to a goal target.
+- Do NOT insert api_check between two movements that are clearly safe and independent (e.g., two long forward moves through open space).
+- value must be null for api_check.
+- Example plan: [rotate_clockwise 5, api_check, move_forward 50, move_forward 50] — rotate to align, recheck, then commit to two forward steps.
 
 AREA DESCRIPTION:
 - You will receive the current area_description built up from previous cycles (empty on first cycle).
@@ -111,59 +146,33 @@ AREA DESCRIPTION:
 
 GOAL CHECK:
 - goal_status "completed": the goal is fully achieved — stop planning movement.
+  - For any "fly to X" / "go to X" / "move to X" / "approach X" goal: mark completed when the target object is within ~20cm (fills nearly the entire frame). The drone should stop 20cm away from the target by default.
+  - Do NOT mark completed until the target distance is ≤ 20cm — keep planning forward movements until you reach that stopping distance.
 - goal_status "abort": situation is unsafe or goal is impossible.
 - goal_status "continue": more steps needed.
 
 Output must match the schema exactly. No extra text."""
 
-_AVOIDANCE_SYSTEM = """You are the obstacle avoidance safety system of an autonomous drone with a forward-facing camera.
-
-You receive a camera image, a proposed action, and a list of detected objects/obstacles with their angles and distances.
-
-Your job: decide if an obstacle is within 15 cm of the drone in the direction of the proposed action.
-
-DEFAULT TO safe=true. Only return safe=false if you are highly confident an obstacle is within 15 cm.
-
-STEP 1 — check the object list first:
-- Each object has a horizontal angle (negative=left, positive=right, range ±41°) and vertical angle (negative=below, positive=above, range ±30°).
-- For the proposed action, determine which objects are in the path:
-  - move_forward: horizontal angle within ±20°, vertical angle within ±20°
-  - move_back: horizontal angle outside ±160° (i.e. behind), vertical within ±20°
-  - move_left: horizontal angle -41° to -20°, vertical within ±20°
-  - move_right: horizontal angle +20° to +41°, vertical within ±20°
-  - move_up: vertical angle +10° to +30°
-  - move_down: vertical angle -10° to -30°
-  - rotate_clockwise / rotate_counter_clockwise: no path obstruction, always safe
-- If an object in the path has a known distance ≤ 15 cm → safe=false immediately.
-- If all in-path objects have distance > 15 cm or "unknown" → proceed to Step 2.
-
-STEP 2 — visual confirmation (only if object list is inconclusive):
-- Frame coverage: a surface filling >90% of BOTH frame width AND height → within 15 cm. Less than that → likely safe.
-- Texture: visible individual fibres/grain/pores = under 15 cm. Anything less detailed = safe.
-- If uncertain from visuals → safe=true.
-
-RULES:
-- safe=false ONLY if Step 1 gives a confirmed hit OR Step 2 shows unmistakable proximity.
-- Err heavily on the side of safe=true.
-- Explain your reasoning (object list check + visual check) in the reason field.
-
-Output must match the schema exactly. No extra text."""
-
-# Movement actions that require a valid value
-_MOVEMENT_ACTIONS = frozenset({
-    "move_forward", "move_back", "move_left", "move_right",
-    "move_up", "move_down", "rotate_clockwise", "rotate_counter_clockwise"
-})
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history: list, object_memory: list, area_description: str = "") -> dict:
+def vision_planner_agent(
+    goal: str,
+    image_base64: str,
+    telemetry: dict,
+    history: list,
+    object_memory: list,
+    area_description: str = "",
+    current_plan_actions: Optional[list] = None,
+    action_idx: int = 0,
+) -> dict:
     """Perceives the environment, plans a sequence of actions, and checks goal status.
 
     Returns:
         {
             "perception": { objects, obstacles, free_space, environment, risk_level },
+            "plan_decision": "keep" | "replace",
             "actions":    [ { action, value, reason }, ... ],
             "confidence": float,
             "goal_status": "continue" | "completed" | "abort",
@@ -182,14 +191,50 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
                 f" | {obj['distance']} | step {obj['step']}\n"
             )
 
+    if history:
+        history_text = "\nHistory (last 10 actions executed, oldest first):\n"
+        for i, h in enumerate(history, 1):
+            if isinstance(h, dict):
+                val = h.get("value")
+                history_text += (
+                    f"  {i}. {h.get('action', '?')}"
+                    + (f" {val}" if val else "")
+                    + f" — {h.get('reason', '')}\n"
+                )
+            else:
+                history_text += f"  {i}. {h}\n"
+    else:
+        history_text = "\nHistory: empty (no actions executed yet)\n"
+
+    if current_plan_actions:
+        plan_text = "\nCurrent in-flight plan:\n"
+        for i, a in enumerate(current_plan_actions):
+            if i < action_idx:
+                marker = "DONE"
+            elif i == action_idx:
+                marker = "NEXT"
+            else:
+                marker = "PEND"
+            val = a.get("value")
+            plan_text += (
+                f"  [{marker}] {i+1}. {a['action']}"
+                + (f" {val}" if val else "")
+                + f" — {a.get('reason', '')}\n"
+            )
+        if action_idx >= len(current_plan_actions):
+            plan_text += "  (all actions of current plan completed)\n"
+    else:
+        plan_text = "\nCurrent in-flight plan: none (first cycle — must use plan_decision='replace')\n"
+
     prompt = [
         SystemMessage(content=_PLANNER_SYSTEM),
         HumanMessage(content=[
             {"type": "image", "base64": image_base64, "mime_type": "image/jpg"},
             {"type": "text", "text": (
                 f"Goal: {goal}\n"
-                f"Telemetry: {json.dumps(telemetry)}\n"
-                f"History (last 10): {list(history)}\n"
+                f"Telemetry: {json.dumps(telemetry)}"
+                f"{history_text}"
+                f"{plan_text}"
                 f"Current area description: {area_description if area_description else 'none yet — first cycle'}"
                 f"{memory_text}"
             )}
@@ -198,15 +243,19 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
 
     try:
         result = _planner_llm.invoke(prompt)
-        print("[PLANNER] Plan received:")
-        for i, a in enumerate(result.actions, 1):
-            print(f"  {i}. {a.action}" + (f" {a.value}" if a.value else "") + f" — {a.reason}")
+        print(f"[PLANNER] Plan received (decision={result.plan_decision}):")
+        if result.plan_decision == "replace":
+            for i, a in enumerate(result.actions, 1):
+                print(f"  {i}. {a.action}" + (f" {a.value}" if a.value else "") + f" — {a.reason}")
+        else:
+            print("  (keeping current in-flight plan)")
         print(f"  Goal: {result.goal_status} | {result.goal_reason}")
     except Exception as e:
         print("[PLANNER] Failed, hovering:", e)
         result = PlannerOutput(
             objects=[], obstacles=[], free_space=[],
             environment="unknown", risk_level="high",
+            plan_decision="replace",
             actions=[ActionItem(action="hover", reason="fallback — planner error")],
             confidence=0.0,
             goal_status="continue", goal_reason="fallback — planner error",
@@ -216,6 +265,7 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
     d = result.model_dump()
     return {
         "perception": {k: d[k] for k in ("objects", "obstacles", "free_space", "environment", "risk_level")},
+        "plan_decision": d["plan_decision"],
         "actions":    d["actions"],
         "confidence": d["confidence"],
         "goal_status": d["goal_status"],
@@ -223,58 +273,3 @@ def vision_planner_agent(goal: str, image_base64: str, telemetry: dict, history:
         "area_description": d["area_description"],
         "message_to_user": d.get("message_to_user"),
     }
-
-
-def object_avoidance_agent(proposed_action: dict, image_base64: str, perception: dict) -> dict:
-    """Checks whether a proposed action is safe given the current camera image and perception data.
-
-    Skips the LLM check for non-movement actions (takeoff, land, hover) and
-    approves them immediately.
-
-    Returns AvoidanceOutput as a dict:
-        { "safe": bool, "reason": str }
-    """
-    action_name = proposed_action["action"]
-
-    # Non-movement actions don't need obstacle checking
-    if action_name not in _MOVEMENT_ACTIONS:
-        return {
-            "safe": True,
-            "reason": "non-movement action, no avoidance check needed"
-        }
-
-    print(f"[AVOIDANCE] Checking: {action_name} value={proposed_action.get('value')}")
-
-    # Build object list text from perception
-    all_items = perception.get("objects", []) + perception.get("obstacles", [])
-    if all_items:
-        obj_lines = []
-        for o in all_items:
-            label = o.get("type", "obstacle")
-            obj_lines.append(
-                f"  - {label} | h_angle={o.get('angle', 0)}° | v_angle={o.get('vertical_angle', 0)}° | dist={o.get('distance', 'unknown')}"
-            )
-        obj_text = "Detected objects/obstacles:\n" + "\n".join(obj_lines)
-    else:
-        obj_text = "Detected objects/obstacles: none"
-
-    prompt = [
-        SystemMessage(content=_AVOIDANCE_SYSTEM),
-        HumanMessage(content=[
-            {"type": "image", "base64": image_base64, "mime_type": "image/jpg"},
-            {"type": "text", "text": (
-                f"Proposed action: {action_name}\n"
-                f"Value: {proposed_action.get('value')}\n"
-                f"Reason: {proposed_action.get('reason', '')}\n"
-                f"{obj_text}"
-            )}
-        ])
-    ]
-
-    try:
-        result = _avoidance_llm.invoke(prompt)
-        print(f"[AVOIDANCE] {'SAFE' if result.safe else 'UNSAFE'}: {result.reason}")
-        return result.model_dump()
-    except Exception as e:
-        print("[AVOIDANCE] Failed, blocking for safety:", e)
-        return {"safe": False, "reason": f"avoidance check error: {e}"}
