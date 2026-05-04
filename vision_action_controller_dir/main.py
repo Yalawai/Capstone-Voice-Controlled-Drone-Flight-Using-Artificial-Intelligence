@@ -124,7 +124,7 @@ PLANNING — when plan_decision == "replace", return an ordered sequence of 1-10
 - When asked to fly/go/move to an object: align the crosshair on the target first, then approach with forward movements until the target is ~20cm away (fills nearly the full frame), then stop. The default stopping distance for any navigation goal is 20cm from the target.
 - The closer you are to the target, rotate slower before moving to it; make sure the center of the crosshair is on the target before moving forward.
 - ALWAYS run collision detection before adding any movement action — never plan a move into an obstacle.
-- If the goal object is not visible AND its location is completely unknown (not in object memory, no directional hint): rotate clockwise by 82° (one full camera FOV width) per step with an api_check after each rotation to scan the room systematically. Do NOT move forward or laterally during this scan — spin in place only until the target comes into view.
+- If the goal object is not visible AND its location is completely unknown (not in object memory, no directional hint): rotate clockwise by 41° (one full camera FOV width) per step with an api_check after each rotation to scan the room systematically. Do NOT move forward or laterally during this scan — spin in place only until the target comes into view.
 
 API_CHECK — insert "api_check" actions at points where you want fresh perception before continuing:
 - "api_check" tells the executor to pause and wait for the next planner cycle before proceeding to the following action.
