@@ -120,15 +120,21 @@ whisper_cpp/models/ggml-base.en.bin
 
 ---
 
-### Step 3: Update Configuration (if needed)
+### Step 3: Update Configuration 
 
-If you want to use a different model, update the model path in your Whisper integration code inside:
+Update the model path in your Whisper integration code inside:
 
 ```
-whisper_cpp/
+whisper_cpp/main.py
 ```
 
-Look for where the model is loaded (e.g., `whisper_init_from_file`) and replace the path with your chosen model.
+Change model path to the downloaded model name:
+
+<img width="559" height="79" alt="image" src="https://github.com/user-attachments/assets/7b435c68-372b-4e9a-9038-57ba88a82c30" />
+
+Or
+
+Look for where the model is loaded and replace the path with your chosen model.
 
 ---
 
