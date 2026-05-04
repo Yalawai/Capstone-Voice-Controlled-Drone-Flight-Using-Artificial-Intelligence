@@ -26,8 +26,6 @@ avoiding obstacles.
 -   **Vision Processing**
     -   Captures real-time frames from the drone camera
     -   Extracts scene information for planning and obstacle detection
--   **Obstacle Avoidance**
-    -   Performs safety checks before executing each movement
     -   Prevents unsafe or risky actions
 -   **Closed-Loop Control**
     -   Replans after every movement using updated environment data
@@ -35,19 +33,7 @@ avoiding obstacles.
     -   Keyboard kill switch (ESC)
     -   Keepalive system to prevent auto-landing
 
-## Project Structure
 
-``` text
-.
-├── Integration.py
-├── tello_sdk_controls_dir/
-├── vision_action_controller_dir/
-├── whisper_cpp/
-├── yolo_object_detection_dir/
-├── requirements.txt
-├── graph.png
-└── README.md
-```
 
 ## Setup Instructions
 
@@ -84,10 +70,95 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+# Voice Model Setup (Whisper.cpp)
+
+This project uses **whisper.cpp** for speech-to-text conversion. By default, a lightweight model is used for real-time performance. However, you can improve accuracy by manually downloading and using a higher-quality model.
+
+## Improve Voice Recognition Accuracy
+
+If you want better transcription accuracy, you can switch to a larger Whisper model (e.g., `base`, `small`, or `medium`).
+
+Higher models improve accuracy but may reduce speed and increase memory usage.
+
+---
+
+## Manual Model Download
+
+You must manually download the Whisper model in **ggml format** and place it inside the appropriate directory used by the project.
+
+### Step 1: Download a Model
+
+You can download models from the official repository:
+
+[https://huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
+
+For example, to download the **base English model**:
+
+```bash
+wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+```
+
+Or using the provided script:
+
+```bash
+cd whisper_cpp
+./models/download-ggml-model.sh base.en
+```
+Or Manually Download the model using the above link:
+
+---
+
+### Step 2: Place the Model in the Project
+
+After downloading, place the `.bin` file into the expected model directory used by this project (typically inside the `whisper_cpp/` or models folder).
+
+Example:
+
+```
+whisper_cpp/models/ggml-base.en.bin
+```
+
+---
+
+### Step 3: Update Configuration (if needed)
+
+If you want to use a different model, update the model path in your Whisper integration code inside:
+
+```
+whisper_cpp/
+```
+
+Look for where the model is loaded (e.g., `whisper_init_from_file`) and replace the path with your chosen model.
+
+---
+
+## Recommended Models
+
+| Model | Speed | Accuracy |
+|------|------|---------|
+| tiny | Very fast | Low |
+| base | Fast | Good balance |
+| small | Medium | Better accuracy |
+| medium | Slow | High accuracy |
+
+---
+
+## Notes
+
+- Larger models improve recognition in noisy environments.
+- For real-time drone control, `base.en` or `small.en` is usually the best trade-off.
+- Ensure the model file path matches exactly in your code, otherwise loading will fail.
+
+---
+
+## Reference
+
+[https://github.com/Yalawai/Capstone-Voice-Controlled-Drone-Flight-Using-Artificial-Intelligence/tree/main/whisper_cpp](https://github.com/ggml-org/whisper.cpp)
+
 ## Running the Project
 
 ``` bash
-python Integration.py
+python -m Integration
 ```
 
 ## Safety Considerations
