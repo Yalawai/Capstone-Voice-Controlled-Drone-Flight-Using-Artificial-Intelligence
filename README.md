@@ -35,9 +35,23 @@ avoiding obstacles.
  
 ## System Architecture
 
-<img width="5736" height="3476" alt="Final" src="https://github.com/user-attachments/assets/8dc924c1-7894-4c02-8198-70523e610cac" />
+<img width="2490" height="1453" alt="image" src="https://github.com/user-attachments/assets/095dff09-ee2d-4440-998e-523a0c9ba1d3" />
 
 
+## Prerequisites & Setup
+### Hardware Requirements
+Drone: Ryze Tello (ensure it is fully charged).
+
+Connection: A dedicated Wi-Fi card to connect to the Tello access point.
+
+Audio: A high-quality microphone for voice commands.
+
+### Software Requirements
+Python 3.10+
+
+Google API Key: Required for Gemini/Vision processing.
+
+C++ Build Environment: (CMake + Compiler) for whisper.cpp.
 
 
 ## Setup Instructions
@@ -74,6 +88,12 @@ source .venv/bin/activate
 ``` bash
 pip install -r requirements.txt
 ```
+
+### API Key Configuration
+
+Create a .env file or export your Google API key
+
+Get a google api key from: [https://ai.google.dev/gemini-api/docs/api-key](https://ai.google.dev/gemini-api/docs/api-key)
 
 # Voice Model Setup (Whisper.cpp)
 
@@ -180,7 +200,16 @@ cmake --build build -j --config Release
 
 [https://github.com/ggml-org/whisper.cpp?tab=readme-ov-file](https://github.com/ggml-org/whisper.cpp?tab=readme-ov-file)
 
+
+
 ## Running the Project
+
+## Operation Guide
+
+### Pre-Flight Checklist
+*   **Calibration:** If the drone has recently crashed or drifted, calibrate the IMU via the official Tello app.
+*   **Environment:** Ensure the area is well-lit (the AI relies on visual telemetry) and quiet to minimize STT latency.
+*   **Battery:** Do not attempt flight below 20% battery.
 
 ``` bash
 python -m Integration
@@ -192,5 +221,14 @@ python -m Integration
 -   Maintain line of sight with the drone
 -   Be ready to press ESC for emergency stop
 -   Avoid operating near people or fragile objects
+
+## Limitations & Maintenance
+### Known Issues
+
+Hardware Drift: Due to the Tello's lack of GPS, internal IMU drift may occur during long sessions.
+
+Latency: Processing voice and vision via API calls introduces a slight delay between command and action.
+
+Lighting: In low-light conditions, scene understanding accuracy drops significantly.
 
 
