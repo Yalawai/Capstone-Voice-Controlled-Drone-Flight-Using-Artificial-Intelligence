@@ -90,7 +90,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### API Key Configuration
+## API Key Configuration
 
 Create a .env file or export your Google API key
 
@@ -203,7 +203,7 @@ cmake --build build -j --config Release
 
 
 
-## Running the Project
+
 
 ## Operation Guide
 
@@ -212,9 +212,7 @@ cmake --build build -j --config Release
 *   **Environment:** Ensure the area is well-lit (the AI relies on visual telemetry) and quiet to minimize STT latency.
 *   **Battery:** Do not attempt flight below 20% battery.
 
-``` bash
-python -m Integration
-```
+
 
 ## Safety Considerations
 
@@ -226,10 +224,17 @@ python -m Integration
 ## Limitations & Maintenance
 ### Known Issues
 
-Hardware Drift: Due to the Tello's lack of GPS, internal IMU drift may occur during long sessions.
+-    Hardware Drift: Due to the Tello's lack of GPS, internal IMU drift may occur during long sessions.
 
-Latency: Processing voice and vision via API calls introduces a slight delay between command and action.
+-    Latency: Processing voice and vision via API calls introduces a slight delay between command and action.
 
-Lighting: In low-light conditions, scene understanding accuracy drops significantly.
+-    Lighting: In low-light conditions, scene understanding accuracy drops significantly.
+
+## Running the Project
+
+Run the following command from the root folder
+``` bash
+python -m Integration
+```
 
 
