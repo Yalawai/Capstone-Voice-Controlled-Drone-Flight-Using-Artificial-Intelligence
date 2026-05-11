@@ -39,19 +39,20 @@ avoiding obstacles.
 
 
 ## Prerequisites & Setup
+
 ### Hardware Requirements
-Drone: Ryze Tello (ensure it is fully charged).
 
-Connection: A dedicated Wi-Fi card to connect to the Tello access point.
-
-Audio: A high-quality microphone for voice commands.
+-    Drone: Ryze Tello (ensure it is fully charged).
+-    Connection: A dedicated Wi-Fi card to connect to the Tello access point.
+-    Audio: A high-quality microphone for voice commands.
 
 ### Software Requirements
-Python 3.10+
 
-Google API Key: Required for Gemini/Vision processing.
+-    Python 3.10+
 
-C++ Build Environment: (CMake + Compiler) for whisper.cpp.
+-    Google API Key: Required for Gemini/Vision processing.
+
+-    C++ Build Environment: (CMake + Compiler) for whisper.cpp.
 
 
 ## Setup Instructions
