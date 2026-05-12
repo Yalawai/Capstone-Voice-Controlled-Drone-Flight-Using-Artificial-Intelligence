@@ -85,9 +85,9 @@ def _keepalive(stop_event: Event):
 print("\n===== Drone Control Ready =====")
 
 while not kill_switch.is_set():
-    #goal = get_voice_command()
-    goal = input("[GOAL]: ")
-
+    goal = get_voice_command()
+    # goal = input("[GOAL]: ")
+      
     if not goal or goal.startswith("("):
         print("[SKIPPED] No valid voice command.")
         continue

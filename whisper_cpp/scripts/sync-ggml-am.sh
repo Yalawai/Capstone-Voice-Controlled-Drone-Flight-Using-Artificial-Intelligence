@@ -1,10 +1,10 @@
 #!/bin/bash
 #
-# Synchronize ggml changes to whisper_cpp
+# Synchronize ggml changes to whisper.cpp
 #
 # Usage:
 #
-#   $ cd /path/to/whisper_cpp
+#   $ cd /path/to/whisper.cpp
 #   $ ./scripts/sync-ggml-am.sh -skip hash0,hash1,hash2...
 #
 

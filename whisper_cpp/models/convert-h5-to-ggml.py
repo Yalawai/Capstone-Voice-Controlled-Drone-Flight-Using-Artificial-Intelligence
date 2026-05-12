@@ -6,7 +6,7 @@
 #   git clone https://github.com/ggml-org/whisper.cpp
 #   git clone https://huggingface.co/openai/whisper-medium
 #
-#   python3 ./whisper_cpp/models/convert-h5-to-ggml.py ./whisper-medium/ ./whisper .
+#   python3 ./whisper.cpp/models/convert-h5-to-ggml.py ./whisper-medium/ ./whisper .
 #
 # This script is similar to "convert-pt-to-ggml.py"
 #

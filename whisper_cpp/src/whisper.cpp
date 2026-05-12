@@ -5083,7 +5083,11 @@ struct whisper_vad_context * whisper_vad_init_with_params(
     return vctx;
 }
 
-bool whisper_vad_detect_speech(
+void whisper_vad_reset_state(whisper_vad_context * vctx) {
+    ggml_backend_buffer_clear(vctx->buffer, 0);
+}
+
+bool whisper_vad_detect_speech_no_reset(
         struct whisper_vad_context * vctx,
         const float * samples,
         int n_samples) {
@@ -5094,9 +5098,6 @@ bool whisper_vad_detect_speech(
 
     WHISPER_LOG_INFO("%s: detecting speech in %d samples\n", __func__, n_samples);
     WHISPER_LOG_INFO("%s: n_chunks: %d\n", __func__, n_chunks);
-
-    // Reset LSTM hidden/cell states
-    ggml_backend_buffer_clear(vctx->buffer, 0);
 
     vctx->probs.resize(n_chunks);
     WHISPER_LOG_INFO("%s: props size: %u\n", __func__, n_chunks);
@@ -5163,6 +5164,14 @@ bool whisper_vad_detect_speech(
     ggml_backend_sched_reset(sched);
 
     return true;
+}
+
+bool whisper_vad_detect_speech(
+        struct whisper_vad_context * vctx,
+        const float * samples,
+        int n_samples) {
+    whisper_vad_reset_state(vctx);
+    return whisper_vad_detect_speech_no_reset(vctx, samples, n_samples);
 }
 
 int whisper_vad_segments_n_segments(struct whisper_vad_segments * segments) {
@@ -7650,11 +7659,14 @@ int whisper_full_with_state(
                             }
                         }
                         text = "";
-                        while (i < (int) tokens_cur.size() && tokens_cur[i].id > whisper_token_beg(ctx)) {
-                            i++;
-                        }
-                        i--;
                         t0 = t1;
+                        while (i + 1 < (int) tokens_cur.size() && tokens_cur[i + 1].id > whisper_token_beg(ctx)) {
+                            i++;
+                            if (params.print_special) {
+                                text += whisper_token_to_str(ctx, tokens_cur[i].id);
+                            }
+                            t0 = seek + 2 * (tokens_cur[i].tid - whisper_token_beg(ctx));
+                        }
                         i0 = i + 1;
                         speaker_turn_next = false;
                     }
@@ -7671,8 +7683,8 @@ int whisper_full_with_state(
                             printf("[%s --> %s]  %s\n", to_timestamp(tt0).c_str(), to_timestamp(tt1).c_str(), text.c_str());
                         } else {
                             printf("%s", text.c_str());
-                            fflush(stdout);
                         }
+                        fflush(stdout);
                     }
 
                     result_all.push_back({ tt0, tt1, text, state->no_speech_prob, {}, speaker_turn_next });

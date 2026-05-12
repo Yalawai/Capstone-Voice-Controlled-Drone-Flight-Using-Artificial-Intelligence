@@ -83,7 +83,7 @@ git clone https://github.com/ggml-org/whisper.cpp
 git clone https://huggingface.co/openai/whisper-medium
 
 # convert the model to ggml
-python3 ./whisper_cpp/models/convert-h5-to-ggml.py ./whisper-medium/ ./whisper .
+python3 ./whisper.cpp/models/convert-h5-to-ggml.py ./whisper-medium/ ./whisper .
 ```
 
 ## Distilled models
@@ -93,12 +93,12 @@ Initial support for https://huggingface.co/distil-whisper is available.
 Currently, the chunk-based transcription strategy is not implemented, so there can be sub-optimal quality when using the distilled models with `whisper.cpp`.
 
 ```bash
-# clone OpenAI whisper and whisper_cpp
+# clone OpenAI whisper and whisper.cpp
 git clone https://github.com/openai/whisper
 git clone https://github.com/ggml-org/whisper.cpp
 
 # get the models
-cd whisper_cpp/models
+cd whisper.cpp/models
 git clone https://huggingface.co/distil-whisper/distil-medium.en
 git clone https://huggingface.co/distil-whisper/distil-large-v2
 
