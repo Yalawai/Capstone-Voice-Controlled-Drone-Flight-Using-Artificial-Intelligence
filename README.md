@@ -1,5 +1,14 @@
 # Voice-Controlled Drone Flight Using Artificial Intelligence
 
+Working Demo: Goal search for a white table and land on the table 
+
+https://github.com/user-attachments/assets/87101d75-5211-4971-aed9-81c5ea1d2924
+
+Some additional test run can be found using this link:
+
+[Additional Test Run](https://unicanberraedu-my.sharepoint.com/:f:/g/personal/u3231348_uni_canberra_edu_au/IgBME5XqGN79S45BdGrLH6VxAXTENCY-nrf03g2vAza3G50?e=pYGiID)
+
+
 ## Overview
 
 This project demonstrates an **AI-powered drone control system** that
